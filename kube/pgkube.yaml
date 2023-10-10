@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pgkube
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pgkube
+  namespace: pgkube
+stringData:
+  DATABASE_URL: "postgres://pgkube-user:pgkube-password@postgres-service:5432/postgres"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pgkube
+rules:
+  - apiGroups:
+      - ""
+      - batch
+      - apps
+    resources:
+      - nodes
+      - nodes/proxy
+      - pods
+      - jobs
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pgkube
+  namespace: pgkube
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pgkube
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pgkube
+subjects:
+  - kind: ServiceAccount
+    name: pgkube
+    namespace: pgkube
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgkube
+  namespace: pgkube
+  labels:
+    app: pgkube
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgkube
+  template:
+    metadata:
+      labels:
+        app: pgkube
+    spec:
+      serviceAccountName: pgkube
+      containers:
+        - name: pgkube
+          image: ghcr.io/r2k1/pgkube:main
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          envFrom:
+            - secretRef:
+                name: pgkube
+          resources:
+            requests:
+              memory: "100Mi"
+              cpu: "0.1"

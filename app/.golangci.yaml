@@ -1,0 +1,31 @@
+run:
+  timeout: 3m
+linters:
+  presets:
+    - error
+    - bugs
+    - metalinter
+    - performance
+    - complexity
+    - unused
+  disable:
+    - goerr113
+    - scopelint
+    - funlen
+    - deadcode
+    - revive
+linters-settings:
+  wrapcheck:
+    ignorePackageGlobs:
+      - github.com/r2k1/pgkube/*
+      - github.com/rotisserie/eris
+  gocritic:
+    disabled-checks:
+      - commentFormatting
+issues:
+  exclude-rules:
+    - path: (.+)_test.go
+      linters:
+        - cyclop
+        - wrapcheck
+        - maintidx
