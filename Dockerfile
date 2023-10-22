@@ -6,9 +6,9 @@ COPY app/go.mod app/go.sum ./
 RUN go mod download && go mod verify
 
 COPY app .
-RUN CGO_ENABLED=0 go build -o /workspace/pgkube .
+RUN go build -o /workspace/pgkube .
 
-FROM gcr.io/distroless/base:nonroot
+FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /workspace/pgkube /pgkube
 COPY app/migrations /migrations
 WORKDIR /
