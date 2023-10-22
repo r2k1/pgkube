@@ -18,7 +18,6 @@ linters-settings:
   wrapcheck:
     ignorePackageGlobs:
       - github.com/r2k1/pgkube/*
-      - github.com/rotisserie/eris
   gocritic:
     disabled-checks:
       - commentFormatting

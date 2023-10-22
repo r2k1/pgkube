@@ -14,7 +14,6 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -49,6 +48,7 @@ func MustStartPostgresContainer(ctx context.Context) testcontainers.Container {
 }
 
 func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
+	t.Helper()
 	ctx := context.Background()
 
 	mappedPort, err := container.MappedPort(ctx, "5432")
@@ -77,9 +77,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	t.Cleanup(func() {
 		_ = testConn.Close(ctx)
 		_, err := mainConn.Exec(ctx, "DROP DATABASE "+dbName)
-		if err != nil {
-			assert.NoError(t, err)
-		}
+		require.NoError(t, err)
 		_ = mainConn.Close(ctx)
 	})
 

@@ -220,26 +220,26 @@ func (s *Scraper) nodeMetrics(ctx context.Context, nodeName string) (NodeMetrics
 		PodMemoryWorkingSetBytes: make(map[PodKey]Value),
 	}
 	if metric, ok := metrics["pod_cpu_usage_seconds_total"]; ok {
-		for _, m := range metric.Metric {
+		for _, m := range metric.GetMetric() {
 			result.PodCPUUsageSecondsTotal[PodKey{
-				Name:      getLabel(m.Label, "pod"),
-				Namespace: getLabel(m.Label, "namespace"),
+				Name:      getLabel(m.GetLabel(), "pod"),
+				Namespace: getLabel(m.GetLabel(), "namespace"),
 				NodeName:  nodeName,
 			}] = Value{
-				Value:       *m.Counter.Value,
-				TimestampMs: *m.TimestampMs,
+				Value:       m.GetCounter().GetValue(),
+				TimestampMs: m.GetTimestampMs(),
 			}
 		}
 	}
 	if metric, ok := metrics["pod_memory_working_set_bytes"]; ok {
-		for _, m := range metric.Metric {
+		for _, m := range metric.GetMetric() {
 			result.PodMemoryWorkingSetBytes[PodKey{
-				Name:      getLabel(m.Label, "pod"),
-				Namespace: getLabel(m.Label, "namespace"),
+				Name:      getLabel(m.GetLabel(), "pod"),
+				Namespace: getLabel(m.GetLabel(), "namespace"),
 				NodeName:  nodeName,
 			}] = Value{
-				Value:       *m.Gauge.Value,
-				TimestampMs: *m.TimestampMs,
+				Value:       m.GetGauge().GetValue(),
+				TimestampMs: m.GetTimestampMs(),
 			}
 		}
 	}
