@@ -71,7 +71,7 @@ spec:
       serviceAccountName: pgkube
       containers:
         - name: pgkube
-          image: ghcr.io/r2k1/pgkube:main
+          image: ghcr.io/r2k1/pgkube:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
