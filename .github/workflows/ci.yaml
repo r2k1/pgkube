@@ -29,6 +29,7 @@ jobs:
           working-directory: app
 
   build-and-publish-image:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
