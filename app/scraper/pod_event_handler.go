@@ -22,32 +22,31 @@ func NewPodEventHandler(queries *queries.Queries) *PodEventHandler {
 
 }
 
-func (p *PodEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
-	p.tryUpsertPod(obj)
+func (h *PodEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
+	h.tryUpsertPod(obj)
 }
 
-func (p *PodEventHandler) OnUpdate(oldObj, obj interface{}) {
-	p.tryUpsertPod(obj)
+func (h *PodEventHandler) OnUpdate(oldObj, obj interface{}) {
+	h.tryUpsertPod(obj)
+}
+
+func (h *PodEventHandler) OnDelete(obj interface{}) {
+	h.tryUpsertPod(obj)
 
 }
 
-func (p *PodEventHandler) OnDelete(obj interface{}) {
-	p.tryUpsertPod(obj)
-
-}
-
-func (p *PodEventHandler) tryUpsertPod(obj interface{}) {
+func (h *PodEventHandler) tryUpsertPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		slog.Error("upserting pod", "error", fmt.Errorf("expected *v1.Pod, got %T", obj))
 		return
 	}
-	if err := p.upsertPod(pod); err != nil {
+	if err := h.upsertPod(pod); err != nil {
 		slog.Error("upserting pod", "error", err)
 	}
 }
 
-func (p *PodEventHandler) upsertPod(obj *v1.Pod) error {
+func (h *PodEventHandler) upsertPod(obj *v1.Pod) error {
 	var cpuRequest, memoryRequest float64
 	for _, container := range obj.Spec.Containers {
 		cpuRequest += container.Resources.Requests.Cpu().AsApproximateFloat64()
@@ -88,7 +87,7 @@ func (p *PodEventHandler) upsertPod(obj *v1.Pod) error {
 		CreatedAt:          toPGTime(obj.CreationTimestamp),
 		StartedAt:          ptrToPGTime(obj.Status.StartTime),
 	}
-	if err := p.queries.UpsertPod(context.Background(), queryParams); err != nil {
+	if err := h.queries.UpsertPod(context.Background(), queryParams); err != nil {
 		return fmt.Errorf("upserting pod: %w", err)
 	}
 	return nil

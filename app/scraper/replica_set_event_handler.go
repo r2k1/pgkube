@@ -21,30 +21,30 @@ func NewReplicaSetEventHandler(queries *queries.Queries) *ReplicaSetEventHandler
 
 }
 
-func (p *ReplicaSetEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
-	p.tryUpsertReplicaSet(obj)
+func (h *ReplicaSetEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
+	h.tryUpsertReplicaSet(obj)
 }
 
-func (p *ReplicaSetEventHandler) OnUpdate(oldObj, newObj interface{}) {
-	p.tryUpsertReplicaSet(newObj)
+func (h *ReplicaSetEventHandler) OnUpdate(oldObj, newObj interface{}) {
+	h.tryUpsertReplicaSet(newObj)
 }
 
-func (p *ReplicaSetEventHandler) OnDelete(obj interface{}) {
-	p.tryUpsertReplicaSet(obj)
+func (h *ReplicaSetEventHandler) OnDelete(obj interface{}) {
+	h.tryUpsertReplicaSet(obj)
 }
 
-func (p *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
+func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 	rs, ok := obj.(*v1.ReplicaSet)
 	if !ok {
 		slog.Error("upserting replica set", "error", fmt.Errorf("expected *v1.ReplicaSet, got %T", obj))
 		return
 	}
-	if err := p.upsertReplicaSet(rs); err != nil {
+	if err := h.upsertReplicaSet(rs); err != nil {
 		slog.Error("upserting replica set", "error", err)
 	}
 }
 
-func (p *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
+func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
 	slog.Info("upserting replica set", "replica_set", obj.Name)
 	uid, err := parsePGUUID(obj.UID)
 	if err != nil {
@@ -75,7 +75,7 @@ func (p *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
 		Annotations:    annotations,
 	}
 
-	if err := p.queries.UpsertReplicaSet(context.Background(), queryParams); err != nil {
+	if err := h.queries.UpsertReplicaSet(context.Background(), queryParams); err != nil {
 		return fmt.Errorf("upserting replica set: %w", err)
 	}
 	return nil

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -23,11 +24,13 @@ var (
 	postgresUser     = "user"
 	postgresPassword = "password"
 	postgresDb       = "testdb"
-	container        = MustStartPostgresContainer(context.Background())
+	container        testcontainers.Container
 	migrateOnce      = sync.Once{}
+	containerOnce    = sync.Once{}
 )
 
-func MustStartPostgresContainer(ctx context.Context) testcontainers.Container {
+func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainers.Container {
+	t.Helper()
 	cont, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        "postgres:15-alpine",
@@ -41,15 +44,18 @@ func MustStartPostgresContainer(ctx context.Context) testcontainers.Container {
 		},
 		Started: true,
 	})
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
 	return cont
 }
 
 func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	containerOnce.Do(func() {
+		container = MustStartPostgresContainer(t, ctx)
+	})
 
 	mappedPort, err := container.MappedPort(ctx, "5432")
 	require.NoError(t, err)
@@ -58,7 +64,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	require.NoError(t, err)
 
 	mainConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", postgresUser, postgresPassword, hostIP, mappedPort.Port(), postgresDb)
-	mainConn, err := pgx.Connect(context.Background(), mainConnString)
+	mainConn, err := pgx.Connect(ctx, mainConnString)
 	require.NoError(t, err)
 
 	migrateOnce.Do(func() {
@@ -81,7 +87,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 		_ = mainConn.Close(ctx)
 	})
 
-	testConn, err = pgx.Connect(context.Background(), connString)
+	testConn, err = pgx.Connect(ctx, connString)
 	require.NoError(t, err)
 
 	return testConn
@@ -110,4 +116,10 @@ func Migrate(t *testing.T, databaseURL string, migrationsPath string) {
 		return
 	}
 	require.NoError(t, err)
+}
+
+func Context(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	t.Cleanup(cancel)
+	return ctx
 }
