@@ -1,7 +1,6 @@
 package scraper
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -9,50 +8,34 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/prometheus/common/expfmt"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
 
+	"github.com/r2k1/pgkube/app/k8s"
 	"github.com/r2k1/pgkube/app/queries"
 )
 
-type podKey struct {
-	Name      string
-	Namespace string
-}
-
-type metricValue struct {
-	Value       float64
-	TimestampMs int64
-}
-
-type nodeMetrics struct {
-	PodCPUUsageSecondsTotal  map[podKey]metricValue
-	PodMemoryWorkingSetBytes map[podKey]metricValue
-}
-
 type NodeScraper struct {
 	nodeName            string
-	k8sClients          kubernetes.Interface
+	k8sClients          k8s.ClientInterface
 	queries             *queries.Queries
-	prevCPUSecondsTotal map[podKey]metricValue
-	prevCores           map[podKey]metricValue
+	prevCPUSecondsTotal k8s.PodMetric
+	prevCores           k8s.PodMetric
 	mutex               sync.Mutex
 }
 
-func NewNodeScrapper(name string, k8sClients kubernetes.Interface, queries *queries.Queries) *NodeScraper {
+func NewNodeScrapper(name string, k8sClients k8s.ClientInterface, queries *queries.Queries) *NodeScraper {
 	return &NodeScraper{
 		nodeName:            name,
 		k8sClients:          k8sClients,
 		queries:             queries,
-		prevCPUSecondsTotal: make(map[podKey]metricValue),
-		prevCores:           make(map[podKey]metricValue),
+		prevCPUSecondsTotal: make(k8s.PodMetric),
+		prevCores:           make(k8s.PodMetric),
 		mutex:               sync.Mutex{},
 	}
 }
 
 func (s *NodeScraper) Scrape(ctx context.Context) error {
-	metrics, err := s.nodeMetrics(ctx)
+	metrics, err := s.k8sClients.NodeMetrics(ctx, s.nodeName)
 	if err != nil {
 		return err
 	}
@@ -75,54 +58,13 @@ func (s *NodeScraper) Scrape(ctx context.Context) error {
 	return nil
 }
 
-func (s *NodeScraper) nodeMetrics(ctx context.Context) (nodeMetrics, error) {
-	body, err := s.k8sClients.CoreV1().RESTClient().Get().
-		Resource("nodes").Name(s.nodeName).SubResource("proxy").
-		Suffix("metrics/resource").DoRaw(ctx)
-	if err != nil {
-		return nodeMetrics{}, fmt.Errorf("getting node metrics: %w", err)
-	}
-	parser := &expfmt.TextParser{}
-	metrics, err := parser.TextToMetricFamilies(bytes.NewReader(body))
-	if err != nil {
-		return nodeMetrics{}, fmt.Errorf("parsing node metrics: %w", err)
-	}
-	result := nodeMetrics{
-		PodCPUUsageSecondsTotal:  make(map[podKey]metricValue),
-		PodMemoryWorkingSetBytes: make(map[podKey]metricValue),
-	}
-	if metric, ok := metrics["pod_cpu_usage_seconds_total"]; ok {
-		for _, m := range metric.GetMetric() {
-			result.PodCPUUsageSecondsTotal[podKey{
-				Name:      getLabel(m.GetLabel(), "pod"),
-				Namespace: getLabel(m.GetLabel(), "namespace"),
-			}] = metricValue{
-				Value:       m.GetCounter().GetValue(),
-				TimestampMs: m.GetTimestampMs(),
-			}
-		}
-	}
-	if metric, ok := metrics["pod_memory_working_set_bytes"]; ok {
-		for _, m := range metric.GetMetric() {
-			result.PodMemoryWorkingSetBytes[podKey{
-				Name:      getLabel(m.GetLabel(), "pod"),
-				Namespace: getLabel(m.GetLabel(), "namespace"),
-			}] = metricValue{
-				Value:       m.GetGauge().GetValue(),
-				TimestampMs: m.GetTimestampMs(),
-			}
-		}
-	}
-	return result, nil
-}
-
-func (s *NodeScraper) cpuData(currentCPUSecondsTotal map[podKey]metricValue) []queries.UpsertPodUsedCPUParams {
+func (s *NodeScraper) cpuData(currentCPUSecondsTotal k8s.PodMetric) []queries.UpsertPodUsedCPUParams {
 	// cpu usage is reported in total seconds consumed by the pod
 	// in order to calculate avg core/sec we need to calculate the difference between current and previous value
 	// cpu usage is calculated as (current - previous) / (current timestamp - previous timestamp)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	podCores := make(map[podKey]metricValue, len(currentCPUSecondsTotal))
+	podCores := make(k8s.PodMetric, len(currentCPUSecondsTotal))
 	for key, value := range currentCPUSecondsTotal {
 		prevValue, ok := s.prevCPUSecondsTotal[key]
 		if !ok {
@@ -131,7 +73,7 @@ func (s *NodeScraper) cpuData(currentCPUSecondsTotal map[podKey]metricValue) []q
 		var cores float64
 		if prevValue.TimestampMs != value.TimestampMs {
 			cores = (value.Value - prevValue.Value) / float64((value.TimestampMs-prevValue.TimestampMs)/1000)
-			podCores[key] = metricValue{
+			podCores[key] = k8s.MetricValue{
 				Value:       cores,
 				TimestampMs: value.TimestampMs,
 			}
@@ -164,7 +106,7 @@ func (s *NodeScraper) cpuData(currentCPUSecondsTotal map[podKey]metricValue) []q
 	return result
 }
 
-func (s *NodeScraper) memoryData(currentPodMemoryUsed map[podKey]metricValue) []queries.UpsertPodUsedMemoryParams {
+func (s *NodeScraper) memoryData(currentPodMemoryUsed k8s.PodMetric) []queries.UpsertPodUsedMemoryParams {
 	result := make([]queries.UpsertPodUsedMemoryParams, 0, len(currentPodMemoryUsed))
 	for key, value := range currentPodMemoryUsed {
 		result = append(result, queries.UpsertPodUsedMemoryParams{
@@ -182,18 +124,18 @@ func (s *NodeScraper) memoryData(currentPodMemoryUsed map[podKey]metricValue) []
 }
 
 type NodeEventHandler struct {
-	manager    *Manager
-	k8sClients *kubernetes.Clientset
-	queries    *queries.Queries
-	interval   time.Duration
+	manager   *Manager
+	k8sClient k8s.ClientInterface
+	queries   *queries.Queries
+	interval  time.Duration
 }
 
-func NewNodeEventHandler(manager *Manager, k8sClients *kubernetes.Clientset, queries *queries.Queries, interval time.Duration) *NodeEventHandler {
+func NewNodeEventHandler(manager *Manager, k8sClient k8s.ClientInterface, queries *queries.Queries, interval time.Duration) *NodeEventHandler {
 	return &NodeEventHandler{
-		manager:    manager,
-		k8sClients: k8sClients,
-		queries:    queries,
-		interval:   interval,
+		manager:   manager,
+		k8sClient: k8sClient,
+		queries:   queries,
+		interval:  interval,
 	}
 }
 
@@ -207,7 +149,7 @@ func (h *NodeEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
 		slog.Error("node name is empty")
 		return
 	}
-	nodeScraper := NewNodeScrapper(node.Name, h.k8sClients, h.queries)
+	nodeScraper := NewNodeScrapper(node.Name, h.k8sClient, h.queries)
 	targetID := "node/" + node.Name
 	h.manager.AddTarget(targetID, nodeScraper.Scrape, h.interval)
 }

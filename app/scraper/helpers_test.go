@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/r2k1/pgkube/app/queries"
 )
 
 var (
@@ -48,6 +50,7 @@ func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainer
 	return cont
 }
 
+// nolint:contextcheck
 func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -81,6 +84,9 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	var testConn *pgx.Conn
 
 	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		_ = testConn.Close(ctx)
 		_, err := mainConn.Exec(ctx, "DROP DATABASE "+dbName)
 		require.NoError(t, err)
@@ -95,6 +101,10 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 
 func CreateDB(t *testing.T) *pgx.Conn {
 	return CreateTestDB(t, "../migrations")
+}
+
+func Queries(t *testing.T) *queries.Queries {
+	return queries.New(CreateDB(t))
 }
 
 func Migrate(t *testing.T, databaseURL string, migrationsPath string) {

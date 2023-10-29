@@ -11,6 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listPodUsageHourly = `-- name: ListPodUsageHourly :many
+SELECT pod_uid, timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg FROM pod_usage_hourly ORDER BY timestamp DESC LIMIT 100
+`
+
+func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, error) {
+	rows, err := q.db.Query(ctx, listPodUsageHourly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PodUsageHourly
+	for rows.Next() {
+		var i PodUsageHourly
+		if err := rows.Scan(
+			&i.PodUid,
+			&i.Timestamp,
+			&i.Namespace,
+			&i.Name,
+			&i.NodeName,
+			&i.MemoryBytesMax,
+			&i.MemoryBytesMin,
+			&i.MemoryBytesTotal,
+			&i.MemoryBytesTotalReadings,
+			&i.MemoryBytesAvg,
+			&i.CpuCoresMax,
+			&i.CpuCoresMin,
+			&i.CpuCoresTotal,
+			&i.CpuCoresTotalReadings,
+			&i.CpuCoresAvg,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const stopOtherPods = `-- name: StopOtherPods :exec
 UPDATE pod
 SET deleted_at = $1

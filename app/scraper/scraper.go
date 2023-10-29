@@ -9,10 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	dto "github.com/prometheus/client_model/go"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/r2k1/pgkube/app/k8s"
 	"github.com/r2k1/pgkube/app/queries"
 )
 
@@ -38,7 +38,8 @@ func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes
 	}
 
 	manager := NewManager(ctx)
-	nodeHandler := NewNodeEventHandler(manager, clientSet, queries, interval)
+
+	nodeHandler := NewNodeEventHandler(manager, k8s.NewClient(clientSet), queries, interval)
 	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandlerWithResyncPeriod(nodeHandler, resyncInterval); err != nil {
 		return fmt.Errorf("adding node event handler: %w", err)
 	}
@@ -50,15 +51,6 @@ func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes
 
 func truncateToHour(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
-}
-
-func getLabel(labels []*dto.LabelPair, name string) string {
-	for _, label := range labels {
-		if label.GetName() == name {
-			return label.GetValue()
-		}
-	}
-	return ""
 }
 
 func marshalLabels(label map[string]string) ([]byte, error) {
