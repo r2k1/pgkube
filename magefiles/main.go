@@ -117,7 +117,7 @@ func KubeApply(tag string) error {
 		return err
 	}
 
-	newPgKubeYaml := strings.Replace(string(pgKubeYaml), "ghcr.io/r2k1/pgkube:main", dockerImage(tag), 1)
+	newPgKubeYaml := strings.Replace(string(pgKubeYaml), "ghcr.io/r2k1/pgkube:latest", dockerImage(tag), 1)
 
 	if err := Exec(Cmd{
 		Name:  "kubectl",
