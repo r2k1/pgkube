@@ -30,7 +30,7 @@ var (
 	container        testcontainers.Container
 	migrateOnce      = sync.Once{}
 	mainConn         *pgxpool.Pool
-	mainDBLock       sync.Mutex
+	mainDBLock       = sync.Mutex{}
 )
 
 func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainers.Container {
@@ -59,10 +59,10 @@ func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainer
 // The test database is dropped after the test
 func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	migrateOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
 		container = MustStartPostgresContainer(t, ctx)
 		mappedPort, err := container.MappedPort(ctx, "5432")
 		require.NoError(t, err)
@@ -75,6 +75,9 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 		require.NoError(t, err)
 		Migrate(t, mainConnString, migrationsPath)
 	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// nolint:gosec
 	testDBName := "db_" + strconv.Itoa(rand.Intn(10000000))
@@ -94,7 +97,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	var testConn *pgx.Conn
 
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
 		_ = testConn.Close(ctx)
@@ -140,7 +143,7 @@ func Migrate(t *testing.T, databaseURL string, migrationsPath string) {
 }
 
 func Context(t *testing.T) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
 	return ctx
 }
