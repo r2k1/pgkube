@@ -13,22 +13,23 @@ import (
 
 func TestNodeScraper_Scrape(t *testing.T) {
 	ctx := Context(t)
-	nodeName := "test-node"
 
 	t.Run("returns error when NodeMetrics fails", func(t *testing.T) {
+		t.Parallel()
 		client := &k8s.ClientMock{
 			NodeMetricsFunc: func(ctx context.Context, nodeName string) (k8s.NodeMetrics, error) {
 				return k8s.NodeMetrics{}, errors.New("node metrics error")
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper(nodeName, client, queries)
+		scraper := NewNodeScrapper("test-node", client, queries)
 
 		err := scraper.Scrape(ctx)
 		require.Error(t, err)
 	})
 
 	t.Run("update memory usage", func(t *testing.T) {
+		t.Parallel()
 		client := &k8s.ClientMock{
 			NodeMetricsFunc: func(ctx context.Context, nodeName string) (k8s.NodeMetrics, error) {
 				return k8s.NodeMetrics{
@@ -45,7 +46,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper(nodeName, client, queries)
+		scraper := NewNodeScrapper("test-node", client, queries)
 
 		err := scraper.Scrape(ctx)
 		require.NoError(t, err)
@@ -54,6 +55,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, query, 1)
+		assert.Equal(t, "test-node", query[0].NodeName)
 		assert.Equal(t, "test-pod", query[0].Name)
 		assert.Equal(t, "test-namespace", query[0].Namespace)
 		assert.InDelta(t, 100.0, query[0].MemoryBytesMax, 0.0001)
@@ -88,6 +90,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 	})
 
 	t.Run("update cpu usage", func(t *testing.T) {
+		t.Parallel()
 		key := k8s.PodKey{Name: "test-pod", Namespace: "test-namespace"}
 		data := []k8s.PodMetric{
 			{key: k8s.MetricValue{Value: 10, TimestampMs: 0}},    // not enough information
@@ -104,7 +107,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper(nodeName, client, queries)
+		scraper := NewNodeScrapper("test-node", client, queries)
 
 		err := scraper.Scrape(ctx)
 		require.NoError(t, err)
@@ -121,6 +124,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Len(t, query, 1)
+			assert.Equal(t, "test-node", query[0].NodeName)
 			assert.Equal(t, "test-pod", query[0].Name)
 			assert.Equal(t, "test-namespace", query[0].Namespace)
 			assert.InDelta(t, min, query[0].CpuCoresMin, 0.0001)
