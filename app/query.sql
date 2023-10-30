@@ -93,3 +93,6 @@ ON CONFLICT (timestamp, namespace, name, node_name)
                                                  ELSE $5 END,
                   cpu_cores_total          = pod_usage_hourly.cpu_cores_total + $5
 ;
+
+-- name: ListPodUsageHourly :many
+SELECT * FROM pod_usage_hourly ORDER BY timestamp DESC LIMIT 100;

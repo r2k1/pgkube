@@ -66,12 +66,12 @@ func Execute(ctx context.Context) error {
 		return err
 	}
 
-	scrpr, err := scraper.NewScraper(ctx, conn, clientset, time.Minute)
+	err = scraper.StartScraper(ctx, conn, clientset, time.Minute)
 	if err != nil {
 		return err
 	}
-	scrpr.Start(ctx)
-	return nil
+	<-ctx.Done()
+	return fmt.Errorf("context done: %w", ctx.Err())
 }
 
 func Migrate(databaseURL string) error {

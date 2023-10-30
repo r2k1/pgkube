@@ -21,30 +21,30 @@ func NewJobEventHandler(queries *queries.Queries) *JobEventHandler {
 
 }
 
-func (p *JobEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
-	p.tryUpsertJob(obj)
+func (h *JobEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
+	h.tryUpsertJob(obj)
 }
 
-func (p *JobEventHandler) OnUpdate(oldObj, newObj interface{}) {
-	p.tryUpsertJob(newObj)
+func (h *JobEventHandler) OnUpdate(oldObj, newObj interface{}) {
+	h.tryUpsertJob(newObj)
 }
 
-func (p *JobEventHandler) OnDelete(obj interface{}) {
-	p.tryUpsertJob(obj)
+func (h *JobEventHandler) OnDelete(obj interface{}) {
+	h.tryUpsertJob(obj)
 }
 
-func (p *JobEventHandler) tryUpsertJob(obj interface{}) {
+func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
 	job, ok := obj.(*v1.Job)
 	if !ok {
 		slog.Error("upserting job", "error", fmt.Errorf("expected *v1.Job, got %T", obj))
 		return
 	}
-	if err := p.upsertJob(job); err != nil {
+	if err := h.upsertJob(job); err != nil {
 		slog.Error("upserting job", "error", err)
 	}
 }
 
-func (p *JobEventHandler) upsertJob(obj *v1.Job) error {
+func (h *JobEventHandler) upsertJob(obj *v1.Job) error {
 	slog.Info("upserting job", "job", obj.Name)
 	uid, err := parsePGUUID(obj.UID)
 	if err != nil {
@@ -75,7 +75,7 @@ func (p *JobEventHandler) upsertJob(obj *v1.Job) error {
 		Annotations:    annotations,
 	}
 
-	if err := p.queries.UpsertJob(context.Background(), queryParams); err != nil {
+	if err := h.queries.UpsertJob(context.Background(), queryParams); err != nil {
 		return fmt.Errorf("upserting job set: %w", err)
 	}
 	return nil
