@@ -18,20 +18,20 @@ var (
 )
 
 const upsertPodUsedCPU = `-- name: UpsertPodUsedCPU :batchexec
-INSERT INTO pod_usage_hourly (timestamp, namespace, name, node_name, cpu_cores_max, cpu_cores_min, cpu_cores_total,
+insert into pod_usage_hourly (timestamp, namespace, name, node_name, cpu_cores_max, cpu_cores_min, cpu_cores_total,
                               cpu_cores_total_readings)
-VALUES ($1, $2, $3, $4, $5, $5, $5, 1)
-ON CONFLICT (timestamp, namespace, name, node_name)
-    DO UPDATE SET cpu_cores_total_readings = pod_usage_hourly.cpu_cores_total_readings + 1,
-                  cpu_cores_max            = CASE
-                                                 WHEN pod_usage_hourly.cpu_cores_max > $5
-                                                     THEN pod_usage_hourly.cpu_cores_max
-                                                 ELSE $5 END,
-                  cpu_cores_min            = CASE
-                                                 WHEN pod_usage_hourly.cpu_cores_min < $5 AND
+values ($1, $2, $3, $4, $5, $5, $5, 1)
+on conflict (timestamp, namespace, name, node_name)
+    do update set cpu_cores_total_readings = pod_usage_hourly.cpu_cores_total_readings + 1,
+                  cpu_cores_max            = case
+                                                 when pod_usage_hourly.cpu_cores_max > $5
+                                                     then pod_usage_hourly.cpu_cores_max
+                                                 else $5 end,
+                  cpu_cores_min            = case
+                                                 when pod_usage_hourly.cpu_cores_min < $5 and
                                                       pod_usage_hourly.cpu_cores_min != 0
-                                                     THEN pod_usage_hourly.cpu_cores_min
-                                                 ELSE $5 END,
+                                                     then pod_usage_hourly.cpu_cores_min
+                                                 else $5 end,
                   cpu_cores_total          = pod_usage_hourly.cpu_cores_total + $5
 `
 
@@ -87,21 +87,21 @@ func (b *UpsertPodUsedCPUBatchResults) Close() error {
 }
 
 const upsertPodUsedMemory = `-- name: UpsertPodUsedMemory :batchexec
-INSERT INTO pod_usage_hourly (timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min,
+insert into pod_usage_hourly (timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min,
                               memory_bytes_total,
                               memory_bytes_total_readings)
-VALUES ($1, $2, $3, $4, $5, $5, $5, 1)
-ON CONFLICT (timestamp, namespace, name, node_name)
-    DO UPDATE SET memory_bytes_total_readings = pod_usage_hourly.memory_bytes_total_readings + 1,
-                  memory_bytes_max            = CASE
-                                                    WHEN pod_usage_hourly.memory_bytes_max > $5
-                                                        THEN pod_usage_hourly.memory_bytes_max
-                                                    ELSE $5 END,
-                  memory_bytes_min            = CASE
-                                                    WHEN pod_usage_hourly.memory_bytes_min < $5 AND
+values ($1, $2, $3, $4, $5, $5, $5, 1)
+on conflict (timestamp, namespace, name, node_name)
+    do update set memory_bytes_total_readings = pod_usage_hourly.memory_bytes_total_readings + 1,
+                  memory_bytes_max            = case
+                                                    when pod_usage_hourly.memory_bytes_max > $5
+                                                        then pod_usage_hourly.memory_bytes_max
+                                                    else $5 end,
+                  memory_bytes_min            = case
+                                                    when pod_usage_hourly.memory_bytes_min < $5 and
                                                          pod_usage_hourly.memory_bytes_min != 0
-                                                        THEN pod_usage_hourly.memory_bytes_min
-                                                    ELSE $5 END,
+                                                        then pod_usage_hourly.memory_bytes_min
+                                                    else $5 end,
                   memory_bytes_total          = pod_usage_hourly.memory_bytes_total + $5
 `
 

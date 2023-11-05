@@ -12,7 +12,7 @@ import (
 )
 
 const listPodUsageHourly = `-- name: ListPodUsageHourly :many
-SELECT pod_uid, timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg FROM pod_usage_hourly ORDER BY timestamp DESC LIMIT 100
+select pod_uid, timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg from pod_usage_hourly order by timestamp desc limit 100
 `
 
 func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, error) {
@@ -52,10 +52,10 @@ func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, err
 }
 
 const stopOtherPods = `-- name: StopOtherPods :exec
-UPDATE pod
-SET deleted_at = $1
-WHERE deleted_at IS NULL
-  AND pod_uid != ALL ($2::uuid[])
+update pod
+set deleted_at = $1
+where deleted_at is null
+  and pod_uid != all ($2::uuid[])
 `
 
 type StopOtherPodsParams struct {
@@ -69,11 +69,11 @@ func (q *Queries) StopOtherPods(ctx context.Context, arg StopOtherPodsParams) er
 }
 
 const upsertJob = `-- name: UpsertJob :exec
-INSERT INTO job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name, created_at,
+insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name, created_at,
                 deleted_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-ON CONFLICT (job_uid)
-    DO UPDATE SET name        = $2,
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+on conflict (job_uid)
+    do update set name        = $2,
                   namespace   = $3,
                   labels      = $4,
                   annotations = $5,
@@ -114,11 +114,11 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) error {
 }
 
 const upsertPod = `-- name: UpsertPod :exec
-INSERT INTO pod (pod_uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind,
+insert into pod (pod_uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind,
                  controller_name, request_cpu_cores, request_memory_bytes, created_at, deleted_at, started_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-ON CONFLICT (pod_uid)
-    DO UPDATE SET name                 = $2,
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+on conflict (pod_uid)
+    do update set name                 = $2,
                   namespace            = $3,
                   node_name            = $4,
                   labels               = $5,
@@ -171,11 +171,11 @@ func (q *Queries) UpsertPod(ctx context.Context, arg UpsertPodParams) error {
 }
 
 const upsertReplicaSet = `-- name: UpsertReplicaSet :exec
-INSERT INTO replica_set (replica_set_uid, name, namespace, labels, annotations, controller_uid, controller_kind,
+insert into replica_set (replica_set_uid, name, namespace, labels, annotations, controller_uid, controller_kind,
                          controller_name, created_at, deleted_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-ON CONFLICT (replica_set_uid)
-    DO UPDATE SET name        = $2,
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+on conflict (replica_set_uid)
+    do update set name        = $2,
                   namespace   = $3,
                   labels      = $4,
                   annotations = $5,
