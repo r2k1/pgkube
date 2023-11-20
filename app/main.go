@@ -15,6 +15,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lmittmann/tint"
+	"golang.org/x/sys/unix"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,6 +33,16 @@ import (
 type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
+}
+
+func init() {
+	w := os.Stderr
+	logger := slog.New(
+		tint.NewHandler(w, &tint.Options{
+			NoColor: !IsTerminal(w.Fd()),
+		}),
+	)
+	slog.SetDefault(logger)
 }
 
 func main() {
@@ -128,4 +140,10 @@ func k8sConfig(cfg Config) (*rest.Config, error) {
 		return config, nil
 	}
 	return nil, errors.Join(inClusterErr, outClusterErr)
+}
+
+// IsTerminal return true if the file descriptor is terminal.
+func IsTerminal(fd uintptr) bool {
+	_, err := unix.IoctlGetTermios(int(fd), unix.TIOCGETA)
+	return err == nil
 }
