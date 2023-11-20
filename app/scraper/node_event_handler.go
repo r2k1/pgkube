@@ -21,9 +21,10 @@ type NodeScraper struct {
 	prevCPUSecondsTotal k8s.PodMetric
 	prevCores           k8s.PodMetric
 	mutex               sync.Mutex
+	cache               *Cache
 }
 
-func NewNodeScrapper(name string, k8sClients k8s.ClientInterface, queries *queries.Queries) *NodeScraper {
+func NewNodeScrapper(name string, k8sClients k8s.ClientInterface, queries *queries.Queries, cache *Cache) *NodeScraper {
 	return &NodeScraper{
 		nodeName:            name,
 		k8sClients:          k8sClients,
@@ -31,6 +32,7 @@ func NewNodeScrapper(name string, k8sClients k8s.ClientInterface, queries *queri
 		prevCPUSecondsTotal: make(k8s.PodMetric),
 		prevCores:           make(k8s.PodMetric),
 		mutex:               sync.Mutex{},
+		cache:               cache,
 	}
 }
 
@@ -90,14 +92,23 @@ func (s *NodeScraper) cpuData(currentCPUSecondsTotal k8s.PodMetric) []queries.Up
 
 	result := make([]queries.UpsertPodUsedCPUParams, 0, len(podCores))
 	for key, value := range podCores {
+		uid, ok := s.cache.LoadPodUID(key.Namespace, key.Name)
+		if !ok {
+			slog.Error("pod uid not found", "namespace", key.Namespace, "name", key.Name)
+			continue
+		}
+		pgUUID, err := parsePGUUID(uid)
+		if err != nil {
+			slog.Error("parsing uuid", "error", err)
+			continue
+		}
+
 		result = append(result, queries.UpsertPodUsedCPUParams{
 			Timestamp: pgtype.Timestamptz{
 				Time:  truncateToHour(time.UnixMilli(value.TimestampMs)).UTC(),
 				Valid: true,
 			},
-			Namespace:   key.Namespace,
-			Name:        key.Name,
-			NodeName:    s.nodeName,
+			PodUid:      pgUUID,
 			CpuCoresMax: value.Value,
 		})
 	}
@@ -109,14 +120,22 @@ func (s *NodeScraper) cpuData(currentCPUSecondsTotal k8s.PodMetric) []queries.Up
 func (s *NodeScraper) memoryData(currentPodMemoryUsed k8s.PodMetric) []queries.UpsertPodUsedMemoryParams {
 	result := make([]queries.UpsertPodUsedMemoryParams, 0, len(currentPodMemoryUsed))
 	for key, value := range currentPodMemoryUsed {
+		uid, ok := s.cache.LoadPodUID(key.Namespace, key.Name)
+		if !ok {
+			slog.Error("pod uid not found", "namespace", key.Namespace, "name", key.Name)
+			continue
+		}
+		pgUUID, err := parsePGUUID(uid)
+		if err != nil {
+			slog.Error("parsing uuid", "error", err)
+			continue
+		}
 		result = append(result, queries.UpsertPodUsedMemoryParams{
 			Timestamp: pgtype.Timestamptz{
 				Time:  truncateToHour(time.UnixMilli(value.TimestampMs)).UTC(),
 				Valid: true,
 			},
-			Namespace:      key.Namespace,
-			Name:           key.Name,
-			NodeName:       s.nodeName,
+			PodUid:         pgUUID,
 			MemoryBytesMax: value.Value,
 		})
 	}
@@ -128,14 +147,22 @@ type NodeEventHandler struct {
 	k8sClient k8s.ClientInterface
 	queries   *queries.Queries
 	interval  time.Duration
+	cache     *Cache
 }
 
-func NewNodeEventHandler(manager *Manager, k8sClient k8s.ClientInterface, queries *queries.Queries, interval time.Duration) *NodeEventHandler {
+func NewNodeEventHandler(
+	manager *Manager,
+	k8sClient k8s.ClientInterface,
+	queries *queries.Queries,
+	interval time.Duration,
+	cache *Cache,
+) *NodeEventHandler {
 	return &NodeEventHandler{
 		manager:   manager,
 		k8sClient: k8sClient,
 		queries:   queries,
 		interval:  interval,
+		cache:     cache,
 	}
 }
 
@@ -149,7 +176,7 @@ func (h *NodeEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
 		slog.Error("node name is empty")
 		return
 	}
-	nodeScraper := NewNodeScrapper(node.Name, h.k8sClient, h.queries)
+	nodeScraper := NewNodeScrapper(node.Name, h.k8sClient, h.queries, h.cache)
 	targetID := "node/" + node.Name
 	h.manager.AddTarget(targetID, nodeScraper.Scrape, h.interval)
 }

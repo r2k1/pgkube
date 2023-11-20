@@ -14,6 +14,7 @@ linters:
     - funlen
     - deadcode
     - revive
+    - testifylint
 linters-settings:
   wrapcheck:
     ignorePackageGlobs:

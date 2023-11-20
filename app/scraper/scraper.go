@@ -18,7 +18,7 @@ import (
 
 const resyncInterval = time.Hour
 
-func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes.Clientset, interval time.Duration) error {
+func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes.Clientset, interval time.Duration, cache *Cache) error {
 	factory := informers.NewSharedInformerFactory(clientSet, resyncInterval)
 	queries := queries.New(psql)
 
@@ -27,7 +27,7 @@ func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes
 		return fmt.Errorf("adding replica set event handler: %w", err)
 	}
 
-	podHandler := NewPodEventHandler(queries)
+	podHandler := NewPodEventHandler(queries, cache)
 	if _, err := factory.Core().V1().Pods().Informer().AddEventHandlerWithResyncPeriod(podHandler, resyncInterval); err != nil {
 		return fmt.Errorf("adding pod event handler: %w", err)
 	}
@@ -39,7 +39,7 @@ func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes
 
 	manager := NewManager(ctx)
 
-	nodeHandler := NewNodeEventHandler(manager, k8s.NewClient(clientSet), queries, interval)
+	nodeHandler := NewNodeEventHandler(manager, k8s.NewClient(clientSet), queries, interval, cache)
 	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandlerWithResyncPeriod(nodeHandler, resyncInterval); err != nil {
 		return fmt.Errorf("adding node event handler: %w", err)
 	}

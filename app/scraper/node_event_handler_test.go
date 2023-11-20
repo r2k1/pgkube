@@ -5,8 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/r2k1/pgkube/app/k8s"
 )
@@ -22,7 +25,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper("test-node", client, queries)
+		scraper := NewNodeScrapper("test-node", client, queries, NewCache())
 
 		err := scraper.Scrape(ctx)
 		require.Error(t, err)
@@ -46,7 +49,10 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper("test-node", client, queries)
+		cache := NewCache()
+		k8suid, pguuid := RandomUUID(t)
+		cache.StorePodUUID("test-namespace", "test-pod", k8suid)
+		scraper := NewNodeScrapper("test-node", client, queries, cache)
 
 		err := scraper.Scrape(ctx)
 		require.NoError(t, err)
@@ -55,9 +61,8 @@ func TestNodeScraper_Scrape(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, query, 1)
-		assert.Equal(t, "test-node", query[0].NodeName)
-		assert.Equal(t, "test-pod", query[0].Name)
-		assert.Equal(t, "test-namespace", query[0].Namespace)
+
+		assert.Equal(t, pguuid, query[0].PodUid)
 		assert.InDelta(t, 100.0, query[0].MemoryBytesMax, 0.0001)
 		assert.InDelta(t, 100.0, query[0].MemoryBytesMin, 0.0001)
 		assert.InDelta(t, 100.0, query[0].MemoryBytesAvg, 0.0001)
@@ -82,11 +87,40 @@ func TestNodeScraper_Scrape(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, query, 1)
-		assert.Equal(t, "test-pod", query[0].Name)
-		assert.Equal(t, "test-namespace", query[0].Namespace)
+		assert.Equal(t, pguuid, query[0].PodUid)
 		assert.InDelta(t, 200.0, query[0].MemoryBytesMax, 0.0001)
 		assert.InDelta(t, 100.0, query[0].MemoryBytesMin, 0.0001)
 		assert.InDelta(t, 150.0, query[0].MemoryBytesAvg, 0.0001)
+	})
+
+	t.Run("update memory usage, unknown pod", func(t *testing.T) {
+		t.Parallel()
+		client := &k8s.ClientMock{
+			NodeMetricsFunc: func(ctx context.Context, nodeName string) (k8s.NodeMetrics, error) {
+				return k8s.NodeMetrics{
+					PodMemoryWorkingSetBytes: k8s.PodMetric{
+						{
+							Name:      "test-pod",
+							Namespace: "test-namespace",
+						}: {
+							Value:       100,
+							TimestampMs: 1,
+						},
+					},
+				}, nil
+			},
+		}
+		queries := Queries(t)
+		cache := NewCache()
+		scraper := NewNodeScrapper("test-node", client, queries, cache)
+
+		err := scraper.Scrape(ctx)
+		require.NoError(t, err)
+
+		query, err := queries.ListPodUsageHourly(ctx)
+		require.NoError(t, err)
+
+		require.Len(t, query, 0)
 	})
 
 	t.Run("update cpu usage", func(t *testing.T) {
@@ -107,7 +141,10 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper("test-node", client, queries)
+		cache := NewCache()
+		k8suid, pguuid := RandomUUID(t)
+		cache.StorePodUUID("test-namespace", "test-pod", k8suid)
+		scraper := NewNodeScrapper("test-node", client, queries, cache)
 
 		err := scraper.Scrape(ctx)
 		require.NoError(t, err)
@@ -124,9 +161,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Len(t, query, 1)
-			assert.Equal(t, "test-node", query[0].NodeName)
-			assert.Equal(t, "test-pod", query[0].Name)
-			assert.Equal(t, "test-namespace", query[0].Namespace)
+			assert.Equal(t, pguuid, query[0].PodUid)
 			assert.InDelta(t, min, query[0].CpuCoresMin, 0.0001)
 			assert.InDelta(t, max, query[0].CpuCoresMax, 0.0001)
 			assert.InDelta(t, avg, query[0].CpuCoresAvg, 0.0001)
@@ -136,5 +171,11 @@ func TestNodeScraper_Scrape(t *testing.T) {
 		scrapeAndAssertCPU(10.0, 20.0, float64(20+20+10)/3)
 		scrapeAndAssertCPU(10.0, 20.0, float64(20+20+10+10)/4)
 	})
+}
 
+func RandomUUID(t *testing.T) (types.UID, pgtype.UUID) {
+	uuid := uuid.NewUUID()
+	pguuid, err := parsePGUUID(uuid)
+	require.NoError(t, err)
+	return uuid, pguuid
 }

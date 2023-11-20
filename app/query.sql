@@ -58,40 +58,40 @@ on conflict (job_uid)
 
 
 -- name: UpsertPodUsedMemory :batchexec
-insert into pod_usage_hourly (timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min,
+insert into pod_usage_hourly (pod_uid, timestamp, memory_bytes_max, memory_bytes_min,
                               memory_bytes_total,
                               memory_bytes_total_readings)
-values ($1, $2, $3, $4, $5, $5, $5, 1)
-on conflict (timestamp, namespace, name, node_name)
+values ($1, $2, $3, $3, $3, 1)
+on conflict (pod_uid, timestamp)
     do update set memory_bytes_total_readings = pod_usage_hourly.memory_bytes_total_readings + 1,
                   memory_bytes_max            = case
-                                                    when pod_usage_hourly.memory_bytes_max > $5
+                                                    when pod_usage_hourly.memory_bytes_max > $3
                                                         then pod_usage_hourly.memory_bytes_max
-                                                    else $5 end,
+                                                    else $3 end,
                   memory_bytes_min            = case
-                                                    when pod_usage_hourly.memory_bytes_min < $5 and
+                                                    when pod_usage_hourly.memory_bytes_min < $3 and
                                                          pod_usage_hourly.memory_bytes_min != 0
                                                         then pod_usage_hourly.memory_bytes_min
-                                                    else $5 end,
-                  memory_bytes_total          = pod_usage_hourly.memory_bytes_total + $5
+                                                    else $3 end,
+                  memory_bytes_total          = pod_usage_hourly.memory_bytes_total + $3
 ;
 
 -- name: UpsertPodUsedCPU :batchexec
-insert into pod_usage_hourly (timestamp, namespace, name, node_name, cpu_cores_max, cpu_cores_min, cpu_cores_total,
+insert into pod_usage_hourly (pod_uid, timestamp, cpu_cores_max, cpu_cores_min, cpu_cores_total,
                               cpu_cores_total_readings)
-values ($1, $2, $3, $4, $5, $5, $5, 1)
-on conflict (timestamp, namespace, name, node_name)
+values ($1, $2, $3, $3, $3, 1)
+on conflict (pod_uid, timestamp)
     do update set cpu_cores_total_readings = pod_usage_hourly.cpu_cores_total_readings + 1,
                   cpu_cores_max            = case
-                                                 when pod_usage_hourly.cpu_cores_max > $5
+                                                 when pod_usage_hourly.cpu_cores_max > $3
                                                      then pod_usage_hourly.cpu_cores_max
-                                                 else $5 end,
+                                                 else $3 end,
                   cpu_cores_min            = case
-                                                 when pod_usage_hourly.cpu_cores_min < $5 and
+                                                 when pod_usage_hourly.cpu_cores_min < $3 and
                                                       pod_usage_hourly.cpu_cores_min != 0
                                                      then pod_usage_hourly.cpu_cores_min
-                                                 else $5 end,
-                  cpu_cores_total          = pod_usage_hourly.cpu_cores_total + $5
+                                                 else $3 end,
+                  cpu_cores_total          = pod_usage_hourly.cpu_cores_total + $3
 ;
 
 -- name: ListPodUsageHourly :many

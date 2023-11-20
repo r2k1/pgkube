@@ -45,7 +45,7 @@ func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 }
 
 func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
-	slog.Info("upserting replica set", "replica_set", obj.Name)
+	slog.Debug("upserting replica set", "namespace", obj.Namespace, "replica_set", obj.Name)
 	uid, err := parsePGUUID(obj.UID)
 	if err != nil {
 		return err

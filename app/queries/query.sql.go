@@ -12,7 +12,7 @@ import (
 )
 
 const listPodUsageHourly = `-- name: ListPodUsageHourly :many
-select pod_uid, timestamp, namespace, name, node_name, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg from pod_usage_hourly order by timestamp desc limit 100
+select pod_uid, timestamp, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg from pod_usage_hourly order by timestamp desc limit 100
 `
 
 func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, error) {
@@ -27,9 +27,6 @@ func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, err
 		if err := rows.Scan(
 			&i.PodUid,
 			&i.Timestamp,
-			&i.Namespace,
-			&i.Name,
-			&i.NodeName,
 			&i.MemoryBytesMax,
 			&i.MemoryBytesMin,
 			&i.MemoryBytesTotal,

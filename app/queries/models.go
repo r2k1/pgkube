@@ -100,9 +100,6 @@ type PodController struct {
 type PodUsageHourly struct {
 	PodUid                   pgtype.UUID
 	Timestamp                pgtype.Timestamptz
-	Namespace                string
-	Name                     string
-	NodeName                 string
 	MemoryBytesMax           float64
 	MemoryBytesMin           float64
 	MemoryBytesTotal         float64

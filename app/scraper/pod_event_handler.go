@@ -13,40 +13,43 @@ import (
 
 type PodEventHandler struct {
 	queries *queries.Queries
+	cache   *Cache
 }
 
-func NewPodEventHandler(queries *queries.Queries) *PodEventHandler {
+func NewPodEventHandler(queries *queries.Queries, cache *Cache) *PodEventHandler {
 	return &PodEventHandler{
 		queries: queries,
+		cache:   cache,
 	}
 
 }
 
 func (h *PodEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
-	h.tryUpsertPod(obj)
+	pod := obj.(*v1.Pod)
+	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
+	h.tryUpsertPod(pod)
 }
 
 func (h *PodEventHandler) OnUpdate(oldObj, obj interface{}) {
-	h.tryUpsertPod(obj)
+	pod := obj.(*v1.Pod)
+	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
+	h.tryUpsertPod(pod)
 }
 
 func (h *PodEventHandler) OnDelete(obj interface{}) {
-	h.tryUpsertPod(obj)
-
+	pod := obj.(*v1.Pod)
+	h.tryUpsertPod(pod)
+	h.cache.CompareAndDeletePodUUID(pod.Namespace, pod.Name, pod.UID)
 }
 
-func (h *PodEventHandler) tryUpsertPod(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
-	if !ok {
-		slog.Error("upserting pod", "error", fmt.Errorf("expected *v1.Pod, got %T", obj))
-		return
-	}
+func (h *PodEventHandler) tryUpsertPod(pod *v1.Pod) {
 	if err := h.upsertPod(pod); err != nil {
 		slog.Error("upserting pod", "error", err)
 	}
 }
 
 func (h *PodEventHandler) upsertPod(obj *v1.Pod) error {
+	slog.Debug("upserting pod", "namespace", obj.Namespace, "pod", obj.Name)
 	var cpuRequest, memoryRequest float64
 	for _, container := range obj.Spec.Containers {
 		cpuRequest += container.Resources.Requests.Cpu().AsApproximateFloat64()

@@ -46,11 +46,8 @@ create table job
 
 create table pod_usage_hourly
 (
-    pod_uid                     uuid null,
+    pod_uid                     uuid not null ,
     timestamp                   timestamp with time zone not null,
-    namespace                   text                     not null,
-    name                        text                     not null,
-    node_name                   text                     not null,
     memory_bytes_max            double precision         not null default 0,
     memory_bytes_min            double precision         not null default 0,
     memory_bytes_total          double precision         not null default 0,
@@ -68,30 +65,8 @@ create table pod_usage_hourly
                                                                                            when cpu_cores_total_readings = 0
                                                                                                then 0
                                                                                            else cpu_cores_total / cpu_cores_total_readings end) stored,
-    primary key (timestamp, namespace, name, node_name)
+    primary key (pod_uid, timestamp)
 );
-
-
-create
-or replace function update_pod_uid()
-returns trigger as $$
-begin
-    if
-new.pod_uid is not null then return new;
-end if;
-    -- fetching the pod_uid from the pod table using name and namespace
-    new.pod_uid
-:= (select pod_uid from pod where name = new.name and namespace = new.namespace and pod.started_at < new.timestamp order by extract(epoch from (new.timestamp - pod.started_at)) asc limit 1);
-return new;
-end;
-$$
-language plpgsql;
-
-create trigger trigger_update_pod_uid
-    before insert or
-update on pod_usage_hourly
-    for each row
-    execute function update_pod_uid();
 
 create table config
 (

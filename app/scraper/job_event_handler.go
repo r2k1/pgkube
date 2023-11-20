@@ -45,7 +45,7 @@ func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
 }
 
 func (h *JobEventHandler) upsertJob(obj *v1.Job) error {
-	slog.Info("upserting job", "job", obj.Name)
+	slog.Debug("upserting job", "namespace", obj.Namespace, "job", obj.Name)
 	uid, err := parsePGUUID(obj.UID)
 	if err != nil {
 		return err
