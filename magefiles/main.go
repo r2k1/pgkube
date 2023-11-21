@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,7 +16,7 @@ func init() {
 	_ = godotenv.Load("./magefiles/.env")
 }
 
-func PostgresRecreate(ctx context.Context) error {
+func PostgresRecreate() error {
 	// start postgres and seed it with .sql file
 	_ = Exec(Cmd{
 		Name: "docker",
@@ -30,7 +29,7 @@ func PostgresRecreate(ctx context.Context) error {
 func PostgresStart() error {
 	return Exec(Cmd{
 		Name: "docker",
-		Args: []string{"run", "--rm", "-d", "-p", "5432:5432", "--name", "kube-postgres", "-e", "POSTGRES_USER=user", "-e", "POSTGRES_PASSWORD=password", "postgres:15.4-alpine"},
+		Args: []string{"run", "--rm", "-d", "-p", "5432:5432", "--name", "kube-postgres", "-e", "POSTGRES_USER=pgkube-user", "-e", "POSTGRES_PASSWORD=pgkube-password", "postgres:15.4-alpine"},
 	})
 }
 
@@ -87,7 +86,7 @@ func LintDocker() error {
 	})
 }
 
-func DockerPublish(tag string) error {
+func DockerPush(tag string) error {
 	// TODO: check there is no changes after generate
 	mg.Deps(Generate, Test, LintDocker, DockerLogin)
 	return Exec(Cmd{
@@ -137,10 +136,43 @@ func KubeApply(tag string) error {
 	return nil
 }
 
+func PushAndApply(tag string) error {
+	err := DockerPush(tag)
+	if err != nil {
+		return err
+	}
+	return KubeApply(tag)
+}
+
 func KubeLog() error {
 	return Exec(Cmd{
 		Name: "kubectl",
 		Args: []string{"-n", "pgkube", "logs", "-f", "deployment/pgkube"},
+	})
+}
+
+const KindClusterName = "pgkube"
+
+// Creates a kind cluster with postgres and pgkube
+func KindCreate() error {
+	var err error
+	err = Exec(Cmd{
+		Name: "kind",
+		Args: []string{"create", "cluster", "--name", KindClusterName, "--config", "./magefiles/kind.yaml"},
+	})
+	if err != nil {
+		return err
+	}
+	return Exec(Cmd{
+		Name: "kubectl",
+		Args: []string{"config", "use-context", "kind-" + KindClusterName},
+	})
+}
+
+func KindDelete() error {
+	return Exec(Cmd{
+		Name: "kind",
+		Args: []string{"delete", "cluster", "--name", KindClusterName},
 	})
 }
 

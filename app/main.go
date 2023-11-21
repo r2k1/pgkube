@@ -25,7 +25,9 @@ import (
 	//_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 
+	"github.com/r2k1/pgkube/app/queries"
 	"github.com/r2k1/pgkube/app/scraper"
+	"github.com/r2k1/pgkube/app/server"
 )
 
 //go:generate docker run --rm -v ./:/src -w /src sqlc/sqlc:1.22.0 generate
@@ -80,11 +82,12 @@ func Execute(ctx context.Context) error {
 		return err
 	}
 
-	conn, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("unable to connect to database: %w", err)
 	}
-	defer conn.Close()
+	defer pool.Close()
+	queries := queries.New(pool)
 
 	clientset, err := K8sClientset(cfg)
 	if err != nil {
@@ -93,10 +96,18 @@ func Execute(ctx context.Context) error {
 
 	cache := scraper.NewCache()
 
-	err = scraper.StartScraper(ctx, conn, clientset, time.Minute, cache)
+	err = scraper.StartScraper(ctx, queries, clientset, time.Minute, cache)
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		err := server.NewSrv(queries).Start(":8080")
+		if err != nil {
+			slog.Error("server error", "error", err)
+		}
+		cancel()
+	}()
 	<-ctx.Done()
 	return fmt.Errorf("context done: %w", ctx.Err())
 }

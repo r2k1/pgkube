@@ -101,7 +101,7 @@ select *,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
        pod_hours as cpu_cost
-from (select timestamp, pod.pod_uid, pod.namespace, pod.name, pod.node_name, pod.created_at, pod.started_at, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
+from (select timestamp, pod.pod_uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.created_at, pod.started_at, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
           least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
           greatest(pod_usage_hourly.timestamp, pod.started_at)) / 3600 as pod_hours
       from pod_usage_hourly
@@ -132,4 +132,3 @@ select date_trunc('day', timestamp) as timestamp,
 from cost_pod_hourly
 group by 1, namespace, controller_kind, controller_name
 order by timestamp asc, total_cost desc;
-

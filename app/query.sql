@@ -14,9 +14,9 @@ on conflict (pod_uid)
                   node_name            = $4,
                   labels               = $5,
                   annotations          = $6,
-                  controller_uid            = $7,
-                  controller_kind           = $8,
-                  controller_name           = $9,
+                  controller_uid       = $7,
+                  controller_kind      = $8,
+                  controller_name      = $9,
                   request_cpu_cores    = $10,
                   request_memory_bytes = $11,
                   created_at           = $12,
@@ -29,31 +29,32 @@ insert into replica_set (replica_set_uid, name, namespace, labels, annotations, 
                          controller_name, created_at, deleted_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 on conflict (replica_set_uid)
-    do update set name        = $2,
-                  namespace   = $3,
-                  labels      = $4,
-                  annotations = $5,
-                  controller_uid   = $6,
-                  controller_kind  = $7,
-                  controller_name  = $8,
-                  created_at  = $9,
-                  deleted_at  = $10
+    do update set name            = $2,
+                  namespace       = $3,
+                  labels          = $4,
+                  annotations     = $5,
+                  controller_uid  = $6,
+                  controller_kind = $7,
+                  controller_name = $8,
+                  created_at      = $9,
+                  deleted_at      = $10
 ;
 
 -- name: UpsertJob :exec
-insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name, created_at,
+insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
+                created_at,
                 deleted_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 on conflict (job_uid)
-    do update set name        = $2,
-                  namespace   = $3,
-                  labels      = $4,
-                  annotations = $5,
-                  controller_uid   = $6,
-                  controller_kind  = $7,
-                  controller_name  = $8,
-                  created_at  = $9,
-                  deleted_at  = $10
+    do update set name            = $2,
+                  namespace       = $3,
+                  labels          = $4,
+                  annotations     = $5,
+                  controller_uid  = $6,
+                  controller_kind = $7,
+                  controller_name = $8,
+                  created_at      = $9,
+                  deleted_at      = $10
 ;
 
 
@@ -95,4 +96,25 @@ on conflict (pod_uid, timestamp)
 ;
 
 -- name: ListPodUsageHourly :many
-select * from pod_usage_hourly order by timestamp desc limit 100;
+select *
+from pod_usage_hourly
+order by timestamp desc
+limit 100;
+
+
+-- name: WorkloadData :many
+select *
+from pod_usage_hourly
+order by case
+             when sqlc.arg(orderBy)::text = 'name_desc' then name
+             end desc,
+            case
+                when sqlc.arg(orderBy)::text = 'name_asc' then name
+                end asc,
+            case
+                when sqlc.arg(orderBy)::text = 'namespace_desc' then namespace
+                end desc,
+            case
+                when sqlc.arg(orderBy)::text = 'namespace_asc' then namespace
+                end asc
+;
