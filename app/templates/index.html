@@ -4,16 +4,31 @@
     <title>Home Page</title>
 </head>
 <body>
+
+<ul>
+    <li>Add Group By</li>
+    {{ range .Request.AvailableGroupBy }}
+    <li><a href="{{ $.Request.AddGroupByLink . }}">{{ . }}</a></li>
+    {{ end }}
+</ul>
+
+<ul>
+    <li>Remove Group By</li>
+    {{ range .Request.GroupBy }}
+    <li><a href="{{ $.Request.RemoveGroupByLink . }}">{{ . }}</a></li>
+    {{ end }}
+</ul>
+
 <table>
     <thead>
         <tr>
-            {{ range .Columns }}
+            {{ range .AggData.Columns }}
             <th>{{ . }}</th>
             {{ end }}
         </tr>
     </thead>
     <tbody>
-        {{range .Rows}}
+        {{range .AggData.Rows}}
         <tr>
             {{ range .}}
                 <td>{{.}}</td>
@@ -24,9 +39,9 @@
 </table>
 <h3>SQL Query</h3>
 <textarea>
-{{ .SQLQuery }}
+{{ .AggData.SQLQuery }}
 
-{{ range .SQLQueryArgs }}
+{{ range .AggData.SQLQueryArgs }}
 {{ . }}
 {{ end }}
 </textarea>

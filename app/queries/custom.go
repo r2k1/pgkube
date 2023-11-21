@@ -2,8 +2,10 @@ package queries
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -14,6 +16,18 @@ type Workload struct {
 	Name      string
 }
 
+// don't accese these variables directly, use the functions below
+var allowedGroupBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
+var allowedSortBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
+
+// poor man immutable slices
+func AllowedGroupBy() []string {
+	return append([]string(nil), allowedGroupBy...)
+}
+func AllowedSortBy() []string {
+	return append([]string(nil), allowedSortBy...)
+}
+
 type WorkloadRequest struct {
 	GroupBy []string
 	OderBy  []string
@@ -21,25 +35,50 @@ type WorkloadRequest struct {
 	End     time.Time
 }
 
-var AllowedGroupBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
+func sortGroupBy(data []string) {
+	indexMap := make(map[string]int)
+	for i, v := range AllowedGroupBy() {
+		indexMap[v] = i
+	}
 
-func (w *WorkloadRequest) Validate() error {
+	// Custom sorting function
+	sort.Slice(data, func(i, j int) bool {
+		return indexMap[data[i]] < indexMap[data[j]]
+	})
+}
+
+func (w WorkloadRequest) Validate() error {
 	for _, g := range w.GroupBy {
 		found := false
-		for _, a := range AllowedGroupBy {
+		for _, a := range AllowedGroupBy() {
 			if g == a {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return errors.New("invalid group by")
+			return fmt.Errorf("invalid group by: %s", g)
 		}
 	}
+
+	for _, o := range w.OderBy {
+		found := false
+		for _, a := range AllowedSortBy() {
+			if o == a || strings.TrimSuffix(o, " desc") == a || strings.TrimSuffix(o, " asc") == a {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("invalid order by: %s", o)
+		}
+	}
+
 	return nil
 }
 
-func WorkloadQuery(ctx context.Context, req WorkloadRequest) (string, []interface{}, error) {
+func WorkloadQuery(req WorkloadRequest) (string, []interface{}, error) {
+	sortGroupBy(req.GroupBy)
 	cols := append(req.GroupBy,
 		"round(sum(memory_bytes_avg * cost_pod_hourly.pod_hours) / sum(pod_hours)) as memory_bytes_avg",
 		"round(max(memory_bytes_max)) as memory_bytes_max",
@@ -55,10 +94,7 @@ type WorkloadAggResult struct {
 }
 
 func (q *Queries) WorkloadAgg(ctx context.Context, req WorkloadRequest) (*WorkloadAggResult, error) {
-	if len(req.GroupBy) == 0 {
-		req.GroupBy = AllowedGroupBy
-	}
-	sql, args, err := WorkloadQuery(ctx, req)
+	sql, args, err := WorkloadQuery(req)
 	if err != nil {
 		return nil, err
 	}
