@@ -33,16 +33,20 @@ import (
 type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
+	LogLevel    string `env:"LOG_LEVEL"`
 }
 
-func init() {
-	w := os.Stderr
-	logger := slog.New(
-		tint.NewHandler(w, &tint.Options{
-			NoColor: !IsTerminal(w.Fd()),
-		}),
-	)
-	slog.SetDefault(logger)
+func (c *Config) SlogLevel() slog.Level {
+	switch c.LogLevel {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "INFO":
+		return slog.LevelInfo
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func main() {
@@ -62,6 +66,15 @@ func Execute(ctx context.Context) error {
 	if err := env.Parse(&cfg); err != nil {
 		return fmt.Errorf("parsing config: %w", err)
 	}
+
+	w := os.Stderr
+	logger := slog.New(
+		tint.NewHandler(w, &tint.Options{
+			NoColor: !IsTerminal(w.Fd()),
+			Level:   cfg.SlogLevel(),
+		}),
+	)
+	slog.SetDefault(logger)
 
 	if err := Migrate(cfg.DatabaseURL); err != nil {
 		return err

@@ -46,7 +46,7 @@ func (s *NodeScraper) Scrape(ctx context.Context) error {
 		if err := s.queries.UpsertPodUsedCPU(ctx, cpuData).Close(); err != nil {
 			return fmt.Errorf("upserting pod used cpu: %w", err)
 		}
-		slog.Info("updated pod CPU usage", "node", s.nodeName, "count", len(cpuData))
+		slog.Debug("updated pod CPU usage", "node", s.nodeName, "count", len(cpuData))
 	}
 
 	memoryData := s.memoryData(metrics.PodMemoryWorkingSetBytes)
@@ -54,7 +54,7 @@ func (s *NodeScraper) Scrape(ctx context.Context) error {
 		if err := s.queries.UpsertPodUsedMemory(ctx, memoryData).Close(); err != nil {
 			return fmt.Errorf("upserting pod used memory: %w", err)
 		}
-		slog.Info("updated pod memory usage", "node", s.nodeName, "count", len(memoryData))
+		slog.Debug("updated pod memory usage", "node", s.nodeName, "count", len(memoryData))
 	}
 
 	return nil
