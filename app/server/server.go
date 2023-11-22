@@ -122,9 +122,28 @@ func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func UnmarshalWorkloadRequest(v url.Values) (WorkloadRequest, error) {
+	var err error
 	result := WorkloadRequest{
 		GroupBy: uniq(v["groupby"]),
 		OderBy:  uniq(v["orderby"]),
+	}
+	startS := v.Get("start")
+	endS := v.Get("end")
+	if startS == "" && endS == "" {
+		now := time.Now()
+		result.Start = now.Add(-24 * time.Hour)
+		result.End = now
+	} else if startS != "" && endS != "" {
+		result.Start, err = time.Parse(time.RFC3339, startS)
+		if err != nil {
+			return WorkloadRequest{}, fmt.Errorf("invalid start: %w", err)
+		}
+		result.End, err = time.Parse(time.RFC3339, endS)
+		if err != nil {
+			return WorkloadRequest{}, fmt.Errorf("invalid end: %w", err)
+		}
+	} else {
+		return result, fmt.Errorf("invalid start/end")
 	}
 	if len(result.GroupBy) == 0 {
 		result.GroupBy = queries.AllowedGroupBy()
@@ -137,6 +156,8 @@ func MarshalWorkloadRequest(request WorkloadRequest) string {
 	values := url.Values{
 		"groupby": request.GroupBy,
 		"orderby": request.OderBy,
+		"start":   []string{request.Start.Format(time.RFC3339)},
+		"end":     []string{request.End.Format(time.RFC3339)},
 	}
 	u, _ := url.Parse("/")
 	u.RawQuery = values.Encode()

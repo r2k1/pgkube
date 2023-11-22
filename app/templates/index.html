@@ -38,12 +38,10 @@
     </tbody>
 </table>
 <h3>SQL Query</h3>
-<textarea>
+<textarea rows="10" cols="140">
 {{ .AggData.SQLQuery }}
 
-{{ range .AggData.SQLQueryArgs }}
-{{ . }}
-{{ end }}
+{{ range .AggData.SQLQueryArgs }}{{ . }}{{ end }}
 </textarea>
 
 </body>

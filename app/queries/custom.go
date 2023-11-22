@@ -80,10 +80,17 @@ func (w WorkloadRequest) Validate() error {
 func WorkloadQuery(req WorkloadRequest) (string, []interface{}, error) {
 	sortGroupBy(req.GroupBy)
 	cols := append(req.GroupBy,
-		"round(sum(memory_bytes_avg * cost_pod_hourly.pod_hours) / sum(pod_hours)) as memory_bytes_avg",
+		"round(sum(memory_bytes_avg * pod_hours) / sum(pod_hours)) as memory_bytes_avg",
 		"round(max(memory_bytes_max)) as memory_bytes_max",
 	)
-	return sq.Select(cols...).GroupBy(req.GroupBy...).From("cost_pod_hourly").OrderBy(req.OderBy...).ToSql()
+	return sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select(cols...).
+		GroupBy(req.GroupBy...).
+		From("cost_pod_hourly").
+		Where(sq.GtOrEq{"timestamp": req.Start}).
+		Where(sq.LtOrEq{"timestamp": req.End}).
+		OrderBy(req.OderBy...).
+		ToSql()
 }
 
 type WorkloadAggResult struct {
