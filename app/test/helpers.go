@@ -1,4 +1,4 @@
-package scraper
+package test
 
 import (
 	"context"
@@ -19,8 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-
-	"github.com/r2k1/pgkube/app/queries"
 )
 
 var (
@@ -113,14 +111,6 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	return testConn
 }
 
-func CreateDB(t *testing.T) *pgx.Conn {
-	return CreateTestDB(t, "../migrations")
-}
-
-func Queries(t *testing.T) *queries.Queries {
-	return queries.New(CreateDB(t))
-}
-
 func Migrate(t *testing.T, databaseURL string, migrationsPath string) {
 	if strings.HasPrefix(databaseURL, "postgres://") {
 		databaseURL = strings.TrimPrefix(databaseURL, "postgres")
@@ -140,10 +130,4 @@ func Migrate(t *testing.T, databaseURL string, migrationsPath string) {
 		return
 	}
 	require.NoError(t, err)
-}
-
-func Context(t *testing.T) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	t.Cleanup(cancel)
-	return ctx
 }

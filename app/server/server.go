@@ -18,7 +18,8 @@ type Srv struct {
 
 func NewSrv(queries *queries.Queries) *Srv {
 	funcMap := template.FuncMap{
-		"ByteCountSI": ByteCountSI,
+		"byteCountSI": byteCountSI,
+		"formatData":  formatData,
 	}
 	tmpl := template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 	return &Srv{
@@ -40,7 +41,7 @@ type WorkloadRequest struct {
 }
 
 func (r WorkloadRequest) Clone() WorkloadRequest {
-	// Create a new instance of WorkloadRequest
+	// Create a new instance of WorkloadAggRequest
 	copyW := WorkloadRequest{
 		Start: r.Start,
 		End:   r.End,
@@ -105,7 +106,7 @@ func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aggData, err := s.queries.WorkloadAgg(r.Context(), queries.WorkloadRequest(workloadReq))
+	aggData, err := s.queries.WorkloadAgg(r.Context(), queries.WorkloadAggRequest(workloadReq))
 	if err != nil {
 		s.HttpError(w, err)
 		return
@@ -129,11 +130,13 @@ func UnmarshalWorkloadRequest(v url.Values) (WorkloadRequest, error) {
 	}
 	startS := v.Get("start")
 	endS := v.Get("end")
-	if startS == "" && endS == "" {
+
+	switch {
+	case startS == "" && endS == "":
 		now := time.Now()
 		result.Start = now.Add(-24 * time.Hour)
 		result.End = now
-	} else if startS != "" && endS != "" {
+	case startS != "" && endS != "":
 		result.Start, err = time.Parse(time.RFC3339, startS)
 		if err != nil {
 			return WorkloadRequest{}, fmt.Errorf("invalid start: %w", err)
@@ -142,7 +145,7 @@ func UnmarshalWorkloadRequest(v url.Values) (WorkloadRequest, error) {
 		if err != nil {
 			return WorkloadRequest{}, fmt.Errorf("invalid end: %w", err)
 		}
-	} else {
+	default:
 		return result, fmt.Errorf("invalid start/end")
 	}
 	if len(result.GroupBy) == 0 {
@@ -165,11 +168,22 @@ func MarshalWorkloadRequest(request WorkloadRequest) string {
 }
 
 func (s *Srv) Start(addr string) error {
+	mux := &http.ServeMux{}
 	fs := http.FileServer(http.Dir("assets"))
-	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
-	http.HandleFunc("/", s.HandleHome)
+	mux.Handle("/assets/", http.StripPrefix("/assets/", fs))
+	mux.HandleFunc("/", s.HandleHome)
 	slog.Info("Starting server", "addr", addr)
-	return http.ListenAndServe(addr, nil)
+	srv := http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 5 * time.Minute,
+		ErrorLog:     nil,
+		Handler:      mux,
+	}
+	err := srv.ListenAndServe()
+	if err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+	return nil
 }
 
 func (s *Srv) HttpError(w http.ResponseWriter, err error) {
@@ -177,7 +191,7 @@ func (s *Srv) HttpError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
-func ByteCountSI(b float64) string {
+func byteCountSI(b float64) string {
 	const unit = 1000.0
 	if b < unit {
 		return fmt.Sprintf("%.2f B", b)
@@ -188,6 +202,16 @@ func ByteCountSI(b float64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.2f %cB", b/div, "kMGTPE"[exp])
+}
+
+func formatData(v interface{}) string {
+	switch v := v.(type) {
+	case float64:
+		return fmt.Sprintf("%.2f", v) // adjust precision as needed
+	// add more cases here for other types if needed1
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 func uniq(data []string) []string {
