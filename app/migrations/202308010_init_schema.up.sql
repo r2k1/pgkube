@@ -90,8 +90,8 @@ select pod.pod_uid,
        coalesce(replica_set.controller_name, job.controller_name, pod.controller_name) as controller_name
 from pod
          left join replica_set
-                   on pod.controller_kind = 'replicaset' and pod.controller_uid = replica_set.replica_set_uid
-         left join job on pod.controller_kind = 'job' and pod.controller_uid = job.job_uid;
+                   on pod.controller_kind = 'ReplicaSet' and pod.controller_uid = replica_set.replica_set_uid
+         left join job on pod.controller_kind = 'Job' and pod.controller_uid = job.job_uid;
 
 create view cost_pod_hourly as
 select *,
