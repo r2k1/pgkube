@@ -28,9 +28,10 @@ func NewSrv(queries *queries.Queries) *Srv {
 	}
 }
 
-type HomeData struct {
-	Request WorkloadRequest
-	AggData *queries.WorkloadAggResult
+type HomeTemplateData struct {
+	Request        WorkloadRequest
+	AggData        *queries.WorkloadAggResult
+	GroupByOptions []string
 }
 
 type WorkloadRequest struct {
@@ -38,6 +39,31 @@ type WorkloadRequest struct {
 	OderBy  []string
 	Start   time.Time
 	End     time.Time
+}
+
+func DefaultRequest() WorkloadRequest {
+	return WorkloadRequest{
+		GroupBy: []string{"namespace", "controller_kind", "controller_name"},
+		OderBy:  []string{"namespace"},
+		Start:   time.Now().Add(-24 * time.Hour),
+		End:     time.Now(),
+	}
+}
+
+func (r WorkloadRequest) IsGroupSelected(group string) bool {
+	for _, g := range r.GroupBy {
+		if g == group {
+			return true
+		}
+	}
+	return false
+}
+
+func (r WorkloadRequest) ToggleGroupLink(group string) string {
+	if r.IsGroupSelected(group) {
+		return r.RemoveGroupByLink(group)
+	}
+	return r.AddGroupByLink(group)
 }
 
 func (r WorkloadRequest) Clone() WorkloadRequest {
@@ -96,6 +122,11 @@ func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
 }
 
 func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery == "" {
+		http.Redirect(w, r, MarshalWorkloadRequest(DefaultRequest()), http.StatusFound)
+		return
+	}
+
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -112,9 +143,10 @@ func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.template.ExecuteTemplate(w, "index.html", &HomeData{
-		Request: workloadReq,
-		AggData: aggData,
+	err = s.template.ExecuteTemplate(w, "index.html", &HomeTemplateData{
+		Request:        workloadReq,
+		AggData:        aggData,
+		GroupByOptions: queries.AllowedGroupBy(),
 	})
 	if err != nil {
 		s.HttpError(w, err)
@@ -173,11 +205,11 @@ func (s *Srv) Start(addr string) error {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", fs))
 	mux.HandleFunc("/", s.HandleHome)
 	slog.Info("Starting server", "addr", addr)
-	srv := http.Server{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,
-		ErrorLog:     nil,
+	srv := &http.Server{
+		Addr:         addr,
 		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
 	}
 	err := srv.ListenAndServe()
 	if err != nil {

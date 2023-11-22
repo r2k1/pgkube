@@ -36,6 +36,7 @@ type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
 	LogLevel    string `env:"LOG_LEVEL"`
+	Addr        string `env:"ADDR" envDefault:":8080"`
 }
 
 func (c *Config) SlogLevel() slog.Level {
@@ -102,7 +103,7 @@ func Execute(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		err := server.NewSrv(queries).Start(":8080")
+		err := server.NewSrv(queries).Start(cfg.Addr)
 		if err != nil {
 			slog.Error("server error", "error", err)
 		}

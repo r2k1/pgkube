@@ -2,22 +2,17 @@
 <html>
 <head>
     <title>Home Page</title>
+    <script src="/assets/htmx.js"></script>
 </head>
 <body>
 
-<ul>
-    <li>Add Group By</li>
-    {{ range .Request.AvailableGroupBy }}
-    <li><a href="{{ $.Request.AddGroupByLink . }}">{{ . }}</a></li>
-    {{ end }}
-</ul>
-
-<ul>
-    <li>Remove Group By</li>
-    {{ range .Request.GroupBy }}
-    <li><a href="{{ $.Request.RemoveGroupByLink . }}">{{ . }}</a></li>
-    {{ end }}
-</ul>
+<h3>Group By</h3>
+{{ range .GroupByOptions }}
+<div>
+    <input type="checkbox" id="group-{{ . }}"  {{ if $.Request.IsGroupSelected . }}checked{{ end }} hx-get="{{ $.Request.ToggleGroupLink . }}" hx-target="body" hx-push-url="true"/>
+    <label for="group-{{ . }}">{{ . }}</label>
+</div>
+{{ end }}
 
 <table>
     <thead>
