@@ -81,6 +81,9 @@ func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
 			break
 		}
 	}
+	if r.OderBy == groupBy {
+		r.OderBy = ""
+	}
 	return MarshalWorkloadRequest(r)
 }
 
@@ -141,7 +144,7 @@ func (r WorkloadRequest) AvailableGroupBy() []string {
 	return result
 }
 
-func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
+func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery == "" {
 		http.Redirect(w, r, MarshalWorkloadRequest(DefaultRequest()), http.StatusFound)
 		return
@@ -223,7 +226,7 @@ func (s *Srv) Start(addr string) error {
 	mux := &http.ServeMux{}
 	fs := http.FileServer(http.Dir("assets"))
 	mux.Handle("/assets/", http.StripPrefix("/assets/", fs))
-	mux.HandleFunc("/", s.HandleHome)
+	mux.HandleFunc("/", s.HandleWorkload)
 	slog.Info("Starting server", "addr", addr)
 	srv := &http.Server{
 		Addr:         addr,

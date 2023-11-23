@@ -108,15 +108,17 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		"round(sum(memory_cost + cpu_cost)::numeric, 2) as total_cost",
 	)
 
-	// nolint: wrapcheck
-	return psq.
+	query := psq.
 		Select(cols...).
 		GroupBy(req.GroupBy...).
 		From("cost_pod_hourly").
 		Where(sq.GtOrEq{"timestamp": req.Start}).
-		Where(sq.LtOrEq{"timestamp": req.End}).
-		OrderBy(req.OderBy).
-		ToSql()
+		Where(sq.LtOrEq{"timestamp": req.End})
+	if req.OderBy != "" {
+		query = query.OrderBy(req.OderBy)
+	}
+	// nolint: wrapcheck
+	return query.ToSql()
 }
 
 type WorkloadAggResult struct {

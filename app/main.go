@@ -16,7 +16,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lmittmann/tint"
-	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -35,7 +35,7 @@ import (
 type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
-	LogLevel    string `env:"LOG_LEVEL"`
+	LogLevel    string `env:"LOG_LEVEL" envDefault:"INFO"`
 	Addr        string `env:"ADDR" envDefault:":8080"`
 }
 
@@ -73,7 +73,7 @@ func Execute(ctx context.Context) error {
 	w := os.Stderr
 	logger := slog.New(
 		tint.NewHandler(w, &tint.Options{
-			NoColor: !IsTerminal(w.Fd()),
+			NoColor: !term.IsTerminal(int(w.Fd())),
 			Level:   cfg.SlogLevel(),
 		}),
 	)
@@ -167,10 +167,4 @@ func k8sConfig(cfg Config) (*rest.Config, error) {
 		return config, nil
 	}
 	return nil, errors.Join(inClusterErr, outClusterErr)
-}
-
-// IsTerminal return true if the file descriptor is terminal.
-func IsTerminal(fd uintptr) bool {
-	_, err := unix.IoctlGetTermios(int(fd), unix.TIOCGETA)
-	return err == nil
 }
