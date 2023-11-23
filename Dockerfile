@@ -11,6 +11,8 @@ RUN go build -o /workspace/pgkube .
 FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /workspace/pgkube /pgkube
 COPY app/migrations /migrations
+COPY app/assets /assets
+COPY app/templates /templates
 WORKDIR /
 USER nonroot:nonroot
 

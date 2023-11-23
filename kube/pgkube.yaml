@@ -72,9 +72,8 @@ spec:
       containers:
         - name: pgkube
           image: ghcr.io/r2k1/pgkube:latest
-          imagePullPolicy: Always
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           envFrom:
             - secretRef:
                 name: pgkube
@@ -82,3 +81,16 @@ spec:
             requests:
               memory: "100Mi"
               cpu: "0.1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgkube
+  namespace: pgkube
+spec:
+  selector:
+    app: pgkube
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

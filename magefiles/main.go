@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -78,21 +78,20 @@ func LintDocker() error {
 		Args: []string{"run", "--rm",
 			"-t", // add colors
 			"-v", "./app:/app",
-			"-v", "./tmp/.cache/golangci-lint/v1.54.2:/root/.cache", // cache previous runs
+			"-v", "./tmp/.cache/golangci-lint/v1.55.2:/root/.cache", // cache previous runs
 			"-w", "/app",
-			"golangci/golangci-lint:v1.54.2",
+			"golangci/golangci-lint:v1.55.2",
 			"golangci-lint", "run", "-v",
 		},
 	})
 }
 
-func DockerPush(tag string) error {
-	// TODO: check there is no changes after generate
+func DockerPush() {
 	mg.Deps(Generate, Test, LintDocker, DockerLogin)
-	return Exec(Cmd{
+	checkErr(Exec(Cmd{
 		Name: "docker",
-		Args: []string{"buildx", "build", "--platform=linux/amd64,linux/arm64,linux/arm/v7", "-t", dockerImage(tag), "--push", "."},
-	})
+		Args: []string{"buildx", "build", "--platform=linux/amd64,linux/arm64,linux/arm/v7", "-t", dockerImage(), "--push", "."},
+	}))
 }
 
 func DockerLogin() error {
@@ -103,45 +102,28 @@ func DockerLogin() error {
 	})
 }
 
-func KubeApply(tag string) error {
-	if err := Exec(Cmd{
+func KubeApply(image string) {
+	checkErr(Exec(Cmd{
 		Name: "kubectl",
 		Args: []string{"apply", "-f", "./kube/postgres.yaml"},
-	}); err != nil {
-		return err
-	}
+	}))
 
 	pgKubeYaml, err := os.ReadFile("./kube/pgkube.yaml")
-	if err != nil {
-		return err
-	}
+	checkErr(err)
 
-	newPgKubeYaml := strings.Replace(string(pgKubeYaml), "ghcr.io/r2k1/pgkube:latest", dockerImage(tag), 1)
+	newPgKubeYaml := strings.Replace(string(pgKubeYaml), "ghcr.io/r2k1/pgkube:latest", image, 1)
 
-	if err := Exec(Cmd{
+	err = Exec(Cmd{
 		Name:  "kubectl",
 		Args:  []string{"apply", "-f", "-"},
 		Stdin: strings.NewReader(newPgKubeYaml),
-	}); err != nil {
-		return err
-	}
+	})
+	checkErr(err)
 
-	if err := Exec(Cmd{
+	checkErr(Exec(Cmd{
 		Name: "kubectl",
 		Args: []string{"-n", "pgkube", "rollout", "restart", "deployment", "pgkube"},
-	}); err != nil {
-		slog.Error(err.Error())
-	}
-
-	return nil
-}
-
-func PushAndApply(tag string) error {
-	err := DockerPush(tag)
-	if err != nil {
-		return err
-	}
-	return KubeApply(tag)
+	}))
 }
 
 func KubeLog() error {
@@ -151,33 +133,24 @@ func KubeLog() error {
 	})
 }
 
-const KindClusterName = "pgkube"
-
 // Creates a kind cluster with postgres and pgkube
-func KindCreate() error {
-	var err error
-	err = Exec(Cmd{
+func KindCreate(clusterName string) {
+	checkErr(Exec(Cmd{
 		Name: "kind",
-		Args: []string{"create", "cluster", "--name", KindClusterName, "--config", "./magefiles/kind.yaml"},
-	})
-	if err != nil {
-		return err
-	}
-	return Exec(Cmd{
+		Args: []string{"create", "cluster", "--name", clusterName, "--config", "./magefiles/kind.yaml"},
+	}))
+	checkErr(Exec(Cmd{
 		Name: "kubectl",
-		Args: []string{"config", "use-context", "kind-" + KindClusterName},
-	})
+		Args: []string{"config", "use-context", "kind-" + clusterName},
+	}))
 }
 
-func KindDelete() error {
-	return Exec(Cmd{
-		Name: "kind",
-		Args: []string{"delete", "cluster", "--name", KindClusterName},
-	})
-}
-
-func dockerImage(tag string) string {
-	return fmt.Sprintf("%s:%s", os.Getenv("DOCKER_REGISTRY"), tag)
+func dockerImage() string {
+	image := os.Getenv("DOCKER_IMAGE")
+	if image == "" {
+		panic("DOCKER_IMAGE env var is not set")
+	}
+	return image
 }
 
 type Cmd struct {
@@ -188,6 +161,31 @@ type Cmd struct {
 	Stdout  io.Writer
 	Stderr  io.Writer
 	NoPrint bool
+}
+
+func DeployKind() {
+	image := dockerImage()
+	err := Exec(Cmd{
+		Name: "docker",
+		Args: []string{"build", "-t", image, "--push", "."},
+	})
+	checkErr(err)
+	KubeApply(image)
+}
+
+func RecreateKindCluster() {
+	clusterName := "pgkube"
+	_ = Exec(Cmd{
+		Name: "kind",
+		Args: []string{"delete", "cluster", "--name", clusterName},
+	})
+	KindCreate(clusterName)
+}
+
+func checkErr(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
 
 func Exec(opts Cmd) error {
@@ -216,4 +214,11 @@ func Exec(opts Cmd) error {
 		fmt.Printf("⚙️ %s%s%s %s%s%s\n", colorCyan, opts.Dir, colorReset, colorYellow, c.String(), colorReset)
 	}
 	return c.Run()
+}
+
+func ExecOutput(opts Cmd) (string, error) {
+	out := &bytes.Buffer{}
+	opts.Stdout = out
+	err := Exec(opts)
+	return out.String(), err
 }
