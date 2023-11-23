@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/r2k1/pgkube/app/queries"
@@ -36,7 +37,7 @@ type HomeTemplateData struct {
 
 type WorkloadRequest struct {
 	GroupBy []string
-	OderBy  []string
+	OderBy  string
 	Start   time.Time
 	End     time.Time
 }
@@ -44,7 +45,7 @@ type WorkloadRequest struct {
 func DefaultRequest() WorkloadRequest {
 	return WorkloadRequest{
 		GroupBy: []string{"namespace", "controller_kind", "controller_name"},
-		OderBy:  []string{"namespace"},
+		OderBy:  "namespace",
 		Start:   time.Now().Add(-24 * time.Hour),
 		End:     time.Now(),
 	}
@@ -66,22 +67,58 @@ func (r WorkloadRequest) ToggleGroupLink(group string) string {
 	return r.AddGroupByLink(group)
 }
 
+func (r WorkloadRequest) AddGroupByLink(groupBy string) string {
+	r = r.Clone()
+	r.GroupBy = append(r.GroupBy, groupBy)
+	return MarshalWorkloadRequest(r)
+}
+
+func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
+	r = r.Clone()
+	for i, g := range r.GroupBy {
+		if g == groupBy {
+			r.GroupBy = append(r.GroupBy[:i], r.GroupBy[i+1:]...)
+			break
+		}
+	}
+	return MarshalWorkloadRequest(r)
+}
+
 func (r WorkloadRequest) Clone() WorkloadRequest {
 	// Create a new instance of WorkloadAggRequest
-	copyW := WorkloadRequest{
-		Start: r.Start,
-		End:   r.End,
-	}
+	copyW := r
 
 	// Deep copy the GroupBy slice
 	copyW.GroupBy = make([]string, len(r.GroupBy))
 	copy(copyW.GroupBy, r.GroupBy)
 
-	// Deep copy the OderBy slice
-	copyW.OderBy = make([]string, len(r.OderBy))
-	copy(copyW.OderBy, r.OderBy)
-
 	return copyW
+}
+
+func (r WorkloadRequest) ToggleOrderLink(col string) string {
+	if !queries.Contains(queries.AllowedSortBy(), col) {
+		return ""
+	}
+	r = r.Clone()
+	currentCol := strings.TrimSuffix(strings.TrimSuffix(r.OderBy, " desc"), " asc")
+	if currentCol == col {
+		if strings.HasSuffix(r.OderBy, " desc") {
+			r.OderBy = currentCol + " asc"
+		} else {
+			r.OderBy = currentCol + " desc"
+		}
+	} else {
+		r.OderBy = col
+	}
+	return MarshalWorkloadRequest(r)
+}
+
+func (r WorkloadRequest) IsOrderAsc(col string) bool {
+	return strings.TrimSuffix(r.OderBy, " asc") == col
+}
+
+func (r WorkloadRequest) IsOrderDesc(col string) bool {
+	return r.OderBy == col+" desc"
 }
 
 func (r WorkloadRequest) GroupedByMap() map[string]struct{} {
@@ -102,23 +139,6 @@ func (r WorkloadRequest) AvailableGroupBy() []string {
 		result = append(result, groupBy)
 	}
 	return result
-}
-
-func (r WorkloadRequest) AddGroupByLink(groupBy string) string {
-	r = r.Clone()
-	r.GroupBy = append(r.GroupBy, groupBy)
-	return MarshalWorkloadRequest(r)
-}
-
-func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
-	r = r.Clone()
-	for i, g := range r.GroupBy {
-		if g == groupBy {
-			r.GroupBy = append(r.GroupBy[:i], r.GroupBy[i+1:]...)
-			break
-		}
-	}
-	return MarshalWorkloadRequest(r)
 }
 
 func (s *Srv) HandleHome(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +178,7 @@ func UnmarshalWorkloadRequest(v url.Values) (WorkloadRequest, error) {
 	var err error
 	result := WorkloadRequest{
 		GroupBy: uniq(v["groupby"]),
-		OderBy:  uniq(v["orderby"]),
+		OderBy:  v.Get("orderby"),
 	}
 	startS := v.Get("start")
 	endS := v.Get("end")
@@ -190,7 +210,7 @@ func UnmarshalWorkloadRequest(v url.Values) (WorkloadRequest, error) {
 func MarshalWorkloadRequest(request WorkloadRequest) string {
 	values := url.Values{
 		"groupby": request.GroupBy,
-		"orderby": request.OderBy,
+		"orderby": []string{request.OderBy},
 		"start":   []string{request.Start.Format(time.RFC3339)},
 		"end":     []string{request.End.Format(time.RFC3339)},
 	}

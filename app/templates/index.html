@@ -18,7 +18,16 @@
     <thead>
         <tr>
             {{ range .AggData.Columns }}
-            <th>{{ . }}</th>
+                {{$toggleOrderLink := $.Request.ToggleOrderLink .}}
+                    <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" hx-target="body" hx-push-url="true"{{ end }}>
+                        {{ . }}
+                        {{ if $.Request.IsOrderAsc . }}
+                            <span>&#x25B2;</span>
+                        {{ end }}
+                        {{ if $.Request.IsOrderDesc . }}
+                            <span>&#x25BC;</span>
+                        {{ end }}
+                    </th>
             {{ end }}
         </tr>
     </thead>

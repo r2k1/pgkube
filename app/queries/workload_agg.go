@@ -20,7 +20,21 @@ type Workload struct {
 
 // don't accese these variables directly, use the functions below
 var allowedGroupBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
-var allowedSortBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
+var allowedSortBy = []string{
+	"namespace",
+	"controller_kind",
+	"controller_name",
+	"pod_name",
+	"node_name",
+	"request_cpu_cores",
+	"used_cpu_cores",
+	"request_memory_bytes_avg",
+	"used_memory_bytes_avg",
+	"pod_hours",
+	"cpu_cost",
+	"memory_cost",
+	"total_cost",
+}
 
 // poor man immutable slices
 func AllowedGroupBy() []string {
@@ -32,7 +46,7 @@ func AllowedSortBy() []string {
 
 type WorkloadAggRequest struct {
 	GroupBy []string
-	OderBy  []string
+	OderBy  string
 	Start   time.Time
 	End     time.Time
 }
@@ -49,34 +63,27 @@ func sortGroupBy(data []string) {
 	})
 }
 
+func Contains(data []string, term string) bool {
+	for _, v := range data {
+		if v == term {
+			return true
+		}
+	}
+	return false
+}
+
 // nolint:cyclop
 func (w WorkloadAggRequest) Validate() error {
 	for _, g := range w.GroupBy {
-		found := false
-		for _, a := range AllowedGroupBy() {
-			if g == a {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !Contains(AllowedGroupBy(), g) {
 			return fmt.Errorf("invalid group by: %s", g)
 		}
 	}
 
-	for _, o := range w.OderBy {
-		found := false
-		for _, a := range AllowedSortBy() {
-			if o == a || strings.TrimSuffix(o, " desc") == a || strings.TrimSuffix(o, " asc") == a {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("invalid order by: %s", o)
-		}
+	orderByCol := strings.TrimPrefix(strings.TrimSuffix(w.OderBy, " desc"), " asc")
+	if !Contains(AllowedSortBy(), orderByCol) {
+		return fmt.Errorf("invalid order by: %s", w.OderBy)
 	}
-
 	return nil
 }
 
@@ -101,18 +108,6 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		"round(sum(memory_cost + cpu_cost)::numeric, 2) as total_cost",
 	)
 
-	orderBy := make([]string, 0, len(req.OderBy))
-	for _, order := range orderBy {
-		order = strings.TrimSuffix(order, " desc")
-		order = strings.TrimSuffix(order, " asc")
-		for _, group := range req.GroupBy {
-			if order == group {
-				orderBy = append(orderBy, order)
-				break
-			}
-		}
-	}
-
 	// nolint: wrapcheck
 	return psq.
 		Select(cols...).
@@ -120,7 +115,7 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		From("cost_pod_hourly").
 		Where(sq.GtOrEq{"timestamp": req.Start}).
 		Where(sq.LtOrEq{"timestamp": req.End}).
-		OrderBy(orderBy...).
+		OrderBy(req.OderBy).
 		ToSql()
 }
 
