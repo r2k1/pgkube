@@ -103,7 +103,7 @@ func Execute(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		err := server.NewSrv(queries).Start(cfg.Addr)
+		err := server.NewSrv(queries, "templates", "assets").Start(cfg.Addr)
 		if err != nil {
 			slog.Error("server error", "error", err)
 		}

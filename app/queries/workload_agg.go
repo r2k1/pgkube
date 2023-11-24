@@ -18,30 +18,26 @@ type Workload struct {
 	Name      string
 }
 
-// don't accese these variables directly, use the functions below
-var allowedGroupBy = []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
-var allowedSortBy = []string{
-	"namespace",
-	"controller_kind",
-	"controller_name",
-	"pod_name",
-	"node_name",
-	"request_cpu_cores",
-	"used_cpu_cores",
-	"request_memory_bytes_avg",
-	"used_memory_bytes_avg",
-	"pod_hours",
-	"cpu_cost",
-	"memory_cost",
-	"total_cost",
-}
-
 // poor man immutable slices
 func AllowedGroupBy() []string {
-	return append([]string(nil), allowedGroupBy...)
+	return []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
 }
 func AllowedSortBy() []string {
-	return append([]string(nil), allowedSortBy...)
+	return []string{
+		"namespace",
+		"controller_kind",
+		"controller_name",
+		"pod_name",
+		"node_name",
+		"request_cpu_cores",
+		"used_cpu_cores",
+		"request_memory_bytes_avg",
+		"used_memory_bytes_avg",
+		"pod_hours",
+		"cpu_cost",
+		"memory_cost",
+		"total_cost",
+	}
 }
 
 type WorkloadAggRequest struct {

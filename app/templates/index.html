@@ -15,6 +15,30 @@
 </div>
 {{ end }}
 
+<div>
+    <label>Time Range</label>
+    {{ range .TimeRangeOptions }}
+    <div>
+        <input type="checkbox" id="range-{{ .Value }}"  {{  if eq .Value $.Request.Range }}checked{{ end }} hx-get="{{ $.Request.SetTimeRangeLink .Value }}" hx-target="body" hx-push-url="true"/>
+        <label for="range-{{ .Value }}">{{ .Label }}</label>
+    </div>
+    {{ end }}
+    <label for="start-date">Start Date</label>
+    <input
+            id="start-date"
+            type="datetime-local"
+            step="3600"
+            value="{{ .Request.Start }}"
+    />
+    <label for="end-date">End Date</label>
+    <input
+            id="end-date"
+            type="datetime-local"
+            step="3600"
+            value="{{ .Request.End}}"
+    />
+</div>
+
 <table>
     <thead>
         <tr>
