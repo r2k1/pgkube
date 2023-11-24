@@ -37,10 +37,10 @@ func (s *Srv) Handler() http.Handler {
 	fs := http.FileServer(http.Dir(s.assetsPath))
 
 	mux := &http.ServeMux{}
+	mux.Handle("/assets/", http.StripPrefix("/assets", fs))
 	mux.Handle("/", http.RedirectHandler(DefaultRequest().Link(), http.StatusFound))
 	mux.HandleFunc("/workload", s.HandleWorkload)
-	mux.Handle("/assets/*", http.StripPrefix("/assets", fs))
-	return mux
+	return LoggingMiddleware(mux)
 }
 
 func (s *Srv) Start(addr string) error {
