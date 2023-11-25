@@ -30,8 +30,6 @@ import (
 	"github.com/r2k1/pgkube/app/server"
 )
 
-//go:generate docker run --rm -v ./:/src -w /src sqlc/sqlc:1.22.0 generate
-
 type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`

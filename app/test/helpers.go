@@ -50,6 +50,14 @@ func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainer
 	return cont
 }
 
+func connectionString(t *testing.T, ctx context.Context, container testcontainers.Container, dbName string) string {
+	mappedPort, err := container.MappedPort(ctx, "5432")
+	require.NoError(t, err)
+	hostIP, err := container.Host(ctx)
+	require.NoError(t, err)
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", postgresUser, postgresPassword, hostIP, mappedPort.Port(), dbName)
+}
+
 // nolint:contextcheck
 // CreateTestDB spawns a new postgres container (if not spawned yet)
 // Runs migrations on the main database (if not run yet)
@@ -62,13 +70,8 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
 		container = MustStartPostgresContainer(t, ctx)
-		mappedPort, err := container.MappedPort(ctx, "5432")
-		require.NoError(t, err)
-
-		hostIP, err := container.Host(ctx)
-		require.NoError(t, err)
-
-		mainConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", postgresUser, postgresPassword, hostIP, mappedPort.Port(), postgresDBName)
+		mainConnString := connectionString(t, ctx, container, postgresDBName)
+		var err error
 		mainConn, err = pgxpool.New(ctx, mainConnString)
 		require.NoError(t, err)
 		Migrate(t, mainConnString, migrationsPath)
@@ -83,14 +86,9 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 	mainDBLock.Lock()
 	_, err := mainConn.Exec(ctx, createDBQuery)
 	mainDBLock.Unlock()
-
 	require.NoError(t, err)
 
-	hostIP, err := container.Host(ctx)
-	require.NoError(t, err)
-	mappedPort, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", postgresUser, postgresPassword, hostIP, mappedPort.Port(), testDBName)
+	connString := connectionString(t, ctx, container, testDBName)
 
 	var testConn *pgx.Conn
 

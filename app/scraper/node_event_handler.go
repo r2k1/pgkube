@@ -43,7 +43,7 @@ func (s *NodeScraper) Scrape(ctx context.Context) error {
 	}
 	cpuData := s.cpuData(metrics.PodCPUUsageSecondsTotal)
 	if len(cpuData) > 0 {
-		if err := s.queries.UpsertPodUsedCPU(ctx, cpuData).Close(); err != nil {
+		if err := s.queries.UpsertPodUsedCPU(ctx, cpuData); err != nil {
 			return fmt.Errorf("upserting pod used cpu: %w", err)
 		}
 		slog.Debug("updated pod CPU usage", "node", s.nodeName, "count", len(cpuData))
@@ -51,7 +51,7 @@ func (s *NodeScraper) Scrape(ctx context.Context) error {
 
 	memoryData := s.memoryData(metrics.PodMemoryWorkingSetBytes)
 	if len(memoryData) > 0 {
-		if err := s.queries.UpsertPodUsedMemory(ctx, memoryData).Close(); err != nil {
+		if err := s.queries.UpsertPodUsedMemory(ctx, memoryData); err != nil {
 			return fmt.Errorf("upserting pod used memory: %w", err)
 		}
 		slog.Debug("updated pod memory usage", "node", s.nodeName, "count", len(memoryData))
@@ -108,8 +108,8 @@ func (s *NodeScraper) cpuData(currentCPUSecondsTotal k8s.PodMetric) []queries.Up
 				Time:  truncateToHour(time.UnixMilli(value.TimestampMs)).UTC(),
 				Valid: true,
 			},
-			PodUid:      pgUUID,
-			CpuCoresMax: value.Value,
+			PodUid:   pgUUID,
+			CpuCores: value.Value,
 		})
 	}
 	s.prevCPUSecondsTotal = currentCPUSecondsTotal
@@ -135,8 +135,8 @@ func (s *NodeScraper) memoryData(currentPodMemoryUsed k8s.PodMetric) []queries.U
 				Time:  truncateToHour(time.UnixMilli(value.TimestampMs)).UTC(),
 				Valid: true,
 			},
-			PodUid:         pgUUID,
-			MemoryBytesMax: value.Value,
+			PodUid:      pgUUID,
+			MemoryBytes: value.Value,
 		})
 	}
 	return result
