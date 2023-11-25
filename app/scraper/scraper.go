@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
@@ -18,9 +17,8 @@ import (
 
 const resyncInterval = time.Hour
 
-func StartScraper(ctx context.Context, psql *pgxpool.Pool, clientSet *kubernetes.Clientset, interval time.Duration, cache *Cache) error {
+func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kubernetes.Clientset, interval time.Duration, cache *Cache) error {
 	factory := informers.NewSharedInformerFactory(clientSet, resyncInterval)
-	queries := queries.New(psql)
 
 	rsHandler := NewReplicaSetEventHandler(queries)
 	if _, err := factory.Apps().V1().ReplicaSets().Informer().AddEventHandlerWithResyncPeriod(rsHandler, resyncInterval); err != nil {

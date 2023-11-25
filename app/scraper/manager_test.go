@@ -5,7 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/r2k1/pgkube/app/queries"
+	"github.com/r2k1/pgkube/app/test"
 )
 
 // Mock scraper function that writes to a channel when called
@@ -75,4 +79,18 @@ func TestManager_MultipleTargets(t *testing.T) {
 	// Ensure the other targets still scrape
 	assert.Eventually(t, func() bool { return <-ch1 }, time.Millisecond*100, time.Millisecond*10)
 	assert.Eventually(t, func() bool { return <-ch3 }, time.Millisecond*120, time.Millisecond*10)
+}
+
+func CreateDB(t *testing.T) *pgx.Conn {
+	return test.CreateTestDB(t, "../migrations")
+}
+
+func Queries(t *testing.T) *queries.Queries {
+	return queries.New(CreateDB(t))
+}
+
+func Context(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	t.Cleanup(cancel)
+	return ctx
 }

@@ -20,7 +20,7 @@ type CostPodHourly struct {
 	Timestamp          pgtype.Timestamptz
 	PodUid             pgtype.UUID
 	Namespace          string
-	Name               string
+	PodName            string
 	NodeName           string
 	CreatedAt          pgtype.Timestamptz
 	StartedAt          pgtype.Timestamptz

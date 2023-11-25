@@ -12,7 +12,10 @@ import (
 )
 
 const listPodUsageHourly = `-- name: ListPodUsageHourly :many
-select pod_uid, timestamp, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg from pod_usage_hourly order by timestamp desc limit 100
+select pod_uid, timestamp, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg
+from pod_usage_hourly
+order by timestamp desc
+limit 100
 `
 
 func (q *Queries) ListPodUsageHourly(ctx context.Context) ([]PodUsageHourly, error) {
@@ -66,19 +69,20 @@ func (q *Queries) StopOtherPods(ctx context.Context, arg StopOtherPodsParams) er
 }
 
 const upsertJob = `-- name: UpsertJob :exec
-insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name, created_at,
+insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
+                created_at,
                 deleted_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 on conflict (job_uid)
-    do update set name        = $2,
-                  namespace   = $3,
-                  labels      = $4,
-                  annotations = $5,
-                  controller_uid   = $6,
-                  controller_kind  = $7,
-                  controller_name  = $8,
-                  created_at  = $9,
-                  deleted_at  = $10
+    do update set name            = $2,
+                  namespace       = $3,
+                  labels          = $4,
+                  annotations     = $5,
+                  controller_uid  = $6,
+                  controller_kind = $7,
+                  controller_name = $8,
+                  created_at      = $9,
+                  deleted_at      = $10
 `
 
 type UpsertJobParams struct {
@@ -120,9 +124,9 @@ on conflict (pod_uid)
                   node_name            = $4,
                   labels               = $5,
                   annotations          = $6,
-                  controller_uid            = $7,
-                  controller_kind           = $8,
-                  controller_name           = $9,
+                  controller_uid       = $7,
+                  controller_kind      = $8,
+                  controller_name      = $9,
                   request_cpu_cores    = $10,
                   request_memory_bytes = $11,
                   created_at           = $12,
@@ -172,15 +176,15 @@ insert into replica_set (replica_set_uid, name, namespace, labels, annotations, 
                          controller_name, created_at, deleted_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 on conflict (replica_set_uid)
-    do update set name        = $2,
-                  namespace   = $3,
-                  labels      = $4,
-                  annotations = $5,
-                  controller_uid   = $6,
-                  controller_kind  = $7,
-                  controller_name  = $8,
-                  created_at  = $9,
-                  deleted_at  = $10
+    do update set name            = $2,
+                  namespace       = $3,
+                  labels          = $4,
+                  annotations     = $5,
+                  controller_uid  = $6,
+                  controller_kind = $7,
+                  controller_name = $8,
+                  created_at      = $9,
+                  deleted_at      = $10
 `
 
 type UpsertReplicaSetParams struct {
@@ -210,4 +214,54 @@ func (q *Queries) UpsertReplicaSet(ctx context.Context, arg UpsertReplicaSetPara
 		arg.DeletedAt,
 	)
 	return err
+}
+
+const workloadData = `-- name: WorkloadData :many
+select pod_uid, timestamp, memory_bytes_max, memory_bytes_min, memory_bytes_total, memory_bytes_total_readings, memory_bytes_avg, cpu_cores_max, cpu_cores_min, cpu_cores_total, cpu_cores_total_readings, cpu_cores_avg
+from pod_usage_hourly
+order by case
+             when $1::text = 'name_desc' then name
+             end desc,
+            case
+                when $1::text = 'name_asc' then name
+                end asc,
+            case
+                when $1::text = 'namespace_desc' then namespace
+                end desc,
+            case
+                when $1::text = 'namespace_asc' then namespace
+                end asc
+`
+
+func (q *Queries) WorkloadData(ctx context.Context, orderby string) ([]PodUsageHourly, error) {
+	rows, err := q.db.Query(ctx, workloadData, orderby)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PodUsageHourly
+	for rows.Next() {
+		var i PodUsageHourly
+		if err := rows.Scan(
+			&i.PodUid,
+			&i.Timestamp,
+			&i.MemoryBytesMax,
+			&i.MemoryBytesMin,
+			&i.MemoryBytesTotal,
+			&i.MemoryBytesTotalReadings,
+			&i.MemoryBytesAvg,
+			&i.CpuCoresMax,
+			&i.CpuCoresMin,
+			&i.CpuCoresTotal,
+			&i.CpuCoresTotalReadings,
+			&i.CpuCoresAvg,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
