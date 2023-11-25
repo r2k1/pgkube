@@ -43,13 +43,22 @@ func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
 		return queries.WorkloadAggRequest{}, fmt.Errorf("range and start/end are mutually exclusive")
 	}
 	var start, end time.Time
-	if r.Range != "" {
-		end = time.Now().Truncate(time.Hour * 24)
-		duration, err := time.ParseDuration(r.Range)
+	if r.Start == "" || r.End == "" {
+		var err error
+		start, end, err = rangeToStartEnd(r.Range)
 		if err != nil {
-			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid range: %w", err)
+			return queries.WorkloadAggRequest{}, err
 		}
-		start = end.Add(-duration)
+	} else {
+		var err error
+		start, err = time.Parse(time.RFC3339, r.Start)
+		if err != nil {
+			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid start: %w", err)
+		}
+		end, err = time.Parse(time.RFC3339, r.End)
+		if err != nil {
+			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid end: %w", err)
+		}
 	}
 	return queries.WorkloadAggRequest{
 		GroupBy: r.GroupBy,
@@ -57,6 +66,19 @@ func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
 		Start:   start,
 		End:     end,
 	}, nil
+}
+
+func rangeToStartEnd(rangeStr string) (time.Time, time.Time, error) {
+	if rangeStr == "" {
+		return time.Time{}, time.Time{}, nil
+	}
+	duration, err := time.ParseDuration(rangeStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid range: %w", err)
+	}
+	end := time.Now().UTC().Truncate(time.Hour)
+	start := end.Add(-duration)
+	return start, end, nil
 }
 
 func (r WorkloadRequest) IsGroupSelected(group string) bool {
@@ -68,20 +90,20 @@ func (r WorkloadRequest) IsGroupSelected(group string) bool {
 	return false
 }
 
-func (r WorkloadRequest) ToggleGroupLink(group string) string {
+func (r WorkloadRequest) LinkToggleGroup(group string) string {
 	if r.IsGroupSelected(group) {
-		return r.RemoveGroupByLink(group)
+		return r.LinkRemoveGroup(group)
 	}
-	return r.AddGroupByLink(group)
+	return r.LinkAddGroup(group)
 }
 
-func (r WorkloadRequest) AddGroupByLink(groupBy string) string {
+func (r WorkloadRequest) LinkAddGroup(groupBy string) string {
 	r = r.Clone()
 	r.GroupBy = append(r.GroupBy, groupBy)
 	return r.Link()
 }
 
-func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
+func (r WorkloadRequest) LinkRemoveGroup(groupBy string) string {
 	r = r.Clone()
 	for i, g := range r.GroupBy {
 		if g == groupBy {
@@ -95,26 +117,21 @@ func (r WorkloadRequest) RemoveGroupByLink(groupBy string) string {
 	return r.Link()
 }
 
-func (r WorkloadRequest) SetTimeRangeLink(rangeStr string) string {
+func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
 	r = r.Clone()
-	r.Range = rangeStr
-	r.Start = ""
-	r.End = ""
+	if rangeValue == "" {
+		start, end, _ := rangeToStartEnd(r.Range)
+		r.Start = start.Format(time.RFC3339)
+		r.End = end.Format(time.RFC3339)
+	} else {
+		r.Start = ""
+		r.End = ""
+	}
+	r.Range = rangeValue
 	return r.Link()
 }
 
-func (r WorkloadRequest) Clone() WorkloadRequest {
-	// Create a new instance of WorkloadAggRequest
-	copyW := r
-
-	// Deep copy the GroupBy slice
-	copyW.GroupBy = make([]string, len(r.GroupBy))
-	copy(copyW.GroupBy, r.GroupBy)
-
-	return copyW
-}
-
-func (r WorkloadRequest) ToggleOrderLink(col string) string {
+func (r WorkloadRequest) LinkToggleOrder(col string) string {
 	if !queries.Contains(queries.AllowedSortBy(), col) {
 		return ""
 	}
@@ -130,6 +147,17 @@ func (r WorkloadRequest) ToggleOrderLink(col string) string {
 		r.OderBy = col
 	}
 	return r.Link()
+}
+
+func (r WorkloadRequest) Clone() WorkloadRequest {
+	// Create a new instance of WorkloadAggRequest
+	copyW := r
+
+	// Deep copy the GroupBy slice
+	copyW.GroupBy = make([]string, len(r.GroupBy))
+	copy(copyW.GroupBy, r.GroupBy)
+
+	return copyW
 }
 
 func (r WorkloadRequest) IsOrderAsc(col string) bool {
@@ -181,6 +209,23 @@ func (r WorkloadRequest) Link() string {
 	return u.String()
 }
 
+func (r WorkloadRequest) StartValue() string {
+	return RFC3339ToHTMLLocalDateTime(r.Start)
+}
+
+func (r WorkloadRequest) EndValue() string {
+	return RFC3339ToHTMLLocalDateTime(r.End)
+}
+
+func RFC3339ToHTMLLocalDateTime(rfc339 string) string {
+	t, err := time.Parse(time.RFC3339, rfc339)
+	if err != nil {
+		return ""
+	}
+	// "datetime-local" input type requires RFC3339 format without timezone
+	return t.Format("2006-01-02T15:04")
+}
+
 func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
 
@@ -207,6 +252,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 			{Label: "1d", Value: "24h"},
 			{Label: "7d", Value: "168h"},
 			{Label: "30d", Value: "720h"},
+			{Label: "custom", Value: ""},
 		},
 	})
 	if err != nil {

@@ -10,7 +10,7 @@
 <h3>Group By</h3>
 {{ range .GroupByOptions }}
 <div>
-    <input type="checkbox" id="group-{{ . }}"  {{ if $.Request.IsGroupSelected . }}checked{{ end }} hx-get="{{ $.Request.ToggleGroupLink . }}" hx-target="body" hx-push-url="true"/>
+    <input type="checkbox" id="group-{{ . }}"  {{ if $.Request.IsGroupSelected . }}checked{{ end }} hx-get="{{ $.Request.LinkToggleGroup . }}" hx-target="body" hx-push-url="true"/>
     <label for="group-{{ . }}">{{ . }}</label>
 </div>
 {{ end }}
@@ -19,31 +19,58 @@
     <label>Time Range</label>
     {{ range .TimeRangeOptions }}
     <div>
-        <input type="checkbox" id="range-{{ .Value }}"  {{  if eq .Value $.Request.Range }}checked{{ end }} hx-get="{{ $.Request.SetTimeRangeLink .Value }}" hx-target="body" hx-push-url="true"/>
+        <input type="checkbox" id="range-{{ .Value }}"  {{  if eq .Value $.Request.Range }}checked{{ end }} hx-get="{{ $.Request.LinkSetRange .Value }}" hx-target="body" hx-push-url="true" hx-trigger="change"/>
         <label for="range-{{ .Value }}">{{ .Label }}</label>
     </div>
     {{ end }}
-    <label for="start-date">Start Date</label>
+    {{ if eq .Request.Range "" }}
+    <label for="start-date">Start (UTC)</label>
     <input
             id="start-date"
             type="datetime-local"
             step="3600"
-            value="{{ .Request.Start }}"
+            value="{{ .Request.StartValue }}"
     />
-    <label for="end-date">End Date</label>
+    <label for="end-date">End (UTC)</label>
     <input
             id="end-date"
             type="datetime-local"
             step="3600"
-            value="{{ .Request.End}}"
+            value="{{ .Request.EndValue}}"
     />
+    <script>
+        document.getElementById('start-date').addEventListener('change', function() {
+            setDateAndReload('start', this.value)
+        });
+
+        document.getElementById('end-date').addEventListener('change', function() {
+            setDateAndReload('end', this.value)
+        });
+
+        function setDateAndReload(param, value) {
+            var selectedDateTime = value + ':00Z';
+            var newUrl = updateUrlParameter(window.location.href, param, selectedDateTime);
+            console.log(this.value, selectedDateTime, newUrl);
+            htmx.ajax('GET', newUrl).then(function () {
+                history.pushState({}, '', newUrl);
+            })
+        }
+
+        function updateUrlParameter(url, paramName, paramValue) {
+            let urlObject = new URL(url);
+            urlObject.searchParams.set(paramName, paramValue);
+            return urlObject.href;
+        }
+    </script>
+    {{ end }}
+
 </div>
 
 <table>
     <thead>
         <tr>
             {{ range .AggData.Columns }}
-                {{$toggleOrderLink := $.Request.ToggleOrderLink .}}
+                {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
                     <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" hx-target="body" hx-push-url="true"{{ end }}>
                         {{ . }}
                         {{ if $.Request.IsOrderAsc . }}
