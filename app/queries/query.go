@@ -40,29 +40,33 @@ limit 100
 	return data, nil
 }
 
+type Object struct {
+	Uid               pgtype.UUID        `db:"uid"`
+	Name              string             `db:"name"`
+	Namespace         string             `db:"namespace"`
+	Labels            []byte             `db:"labels"`
+	Annotations       []byte             `db:"annotations"`
+	CreationTimestamp pgtype.Timestamptz `db:"creation_timestamp"`
+	DeletionTimestamp pgtype.Timestamptz `db:"deletion_timestamp"`
+}
+
 type UpsertPodParams struct {
-	PodUid             pgtype.UUID        `db:"pod_uid"`
-	Name               string             `db:"name"`
-	Namespace          string             `db:"namespace"`
+	Object
 	NodeName           string             `db:"node_name"`
-	Labels             []byte             `db:"labels"`
-	Annotations        []byte             `db:"annotations"`
 	ControllerUid      pgtype.UUID        `db:"controller_uid"`
 	ControllerKind     string             `db:"controller_kind"`
 	ControllerName     string             `db:"controller_name"`
 	RequestCpuCores    float64            `db:"request_cpu_cores"`
 	RequestMemoryBytes float64            `db:"request_memory_bytes"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at"`
-	DeletedAt          pgtype.Timestamptz `db:"deleted_at"`
 	StartedAt          pgtype.Timestamptz `db:"started_at"`
 }
 
 func (q *Queries) UpsertPod(ctx context.Context, arg UpsertPodParams) error {
 	const upsertPod = `insert into pod 
-    (pod_uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind, controller_name, request_cpu_cores, request_memory_bytes, created_at, deleted_at, started_at)
+    (uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind, controller_name, request_cpu_cores, request_memory_bytes, creation_timestamp, deletion_timestamp, started_at)
 values 
-    (@pod_uid, @name, @namespace, @node_name, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @request_cpu_cores, @request_memory_bytes, @created_at, @deleted_at, @started_at)
-on conflict (pod_uid)
+    (@uid, @name, @namespace, @node_name, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @request_cpu_cores, @request_memory_bytes, @creation_timestamp, @deletion_timestamp, @started_at)
+on conflict (uid)
     do update set name                 = @name,
                   namespace            = @namespace,
                   node_name            = @node_name,
@@ -73,8 +77,8 @@ on conflict (pod_uid)
                   controller_name      = @controller_name,
                   request_cpu_cores    = @request_cpu_cores,
                   request_memory_bytes = @request_memory_bytes,
-                  created_at           = @created_at,
-                  deleted_at           = @deleted_at,
+                  creation_timestamp           = @creation_timestamp,
+                  deletion_timestamp           = @deletion_timestamp,
                   started_at           = @started_at
 `
 	_, err := q.exec(ctx, upsertPod, arg)
@@ -82,58 +86,45 @@ on conflict (pod_uid)
 }
 
 type UpsertJobParams struct {
-	JobUid         pgtype.UUID        `db:"job_uid"`
-	Name           string             `db:"name"`
-	Namespace      string             `db:"namespace"`
-	Labels         []byte             `db:"labels"`
-	Annotations    []byte             `db:"annotations"`
-	ControllerUid  pgtype.UUID        `db:"controller_uid"`
-	ControllerKind string             `db:"controller_kind"`
-	ControllerName string             `db:"controller_name"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at"`
-	DeletedAt      pgtype.Timestamptz `db:"deleted_at"`
+	Object
+	ControllerUid  pgtype.UUID `db:"controller_uid"`
+	ControllerKind string      `db:"controller_kind"`
+	ControllerName string      `db:"controller_name"`
 }
 
 func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) error {
-	const upsertJob = `
-insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
-                created_at,
-                deleted_at)
-values (@job_uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @created_at, @deleted_at)
-on conflict (job_uid)
-    do update set name            = @name,
-                  namespace       = @namespace,
-                  labels          = @labels,
-                  annotations     = @annotations,
-                  controller_uid  = @controller_uid,
-                  controller_kind = @controller_kind,
-                  controller_name = @controller_name,
-                  created_at      = @created_at,
-                  deleted_at      = @deleted_at
+	const upsertJob = `insert into job(uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
+                creation_timestamp, deletion_timestamp)
+values (@uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name,
+        @creation_timestamp, @deletion_timestamp)
+on conflict (uid)
+    do update set name               = @name,
+                  namespace          = @namespace,
+                  labels             = @labels,
+                  annotations        = @annotations,
+                  controller_uid     = @controller_uid,
+                  controller_kind    = @controller_kind,
+                  controller_name    = @controller_name,
+                  creation_timestamp = @creation_timestamp,
+                  deletion_timestamp = @deletion_timestamp
 `
 	_, err := q.exec(ctx, upsertJob, arg)
 	return err
 }
 
 type UpsertReplicaSetParams struct {
-	ReplicaSetUid  pgtype.UUID        `db:"replica_set_uid"`
-	Name           string             `db:"name"`
-	Namespace      string             `db:"namespace"`
-	Labels         []byte             `db:"labels"`
-	Annotations    []byte             `db:"annotations"`
-	ControllerUid  pgtype.UUID        `db:"controller_uid"`
-	ControllerKind string             `db:"controller_kind"`
-	ControllerName string             `db:"controller_name"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at"`
-	DeletedAt      pgtype.Timestamptz `db:"deleted_at"`
+	Object
+	ControllerUid  pgtype.UUID `db:"controller_uid"`
+	ControllerKind string      `db:"controller_kind"`
+	ControllerName string      `db:"controller_name"`
 }
 
 func (q *Queries) UpsertReplicaSet(ctx context.Context, arg UpsertReplicaSetParams) error {
 	const upsertReplicaSet = `
-    insert into replica_set (replica_set_uid, name, namespace, labels, annotations, controller_uid, controller_kind,
-                             controller_name, created_at, deleted_at)
-    values (@replica_set_uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @created_at, @deleted_at)
-    on conflict (replica_set_uid)
+    insert into replica_set (uid, name, namespace, labels, annotations, controller_uid, controller_kind,
+                             controller_name, creation_timestamp, deletion_timestamp)
+    values (@uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @creation_timestamp, @deletion_timestamp)
+    on conflict (uid)
         do update set name            = @name,
                       namespace       = @namespace,
                       labels          = @labels,
@@ -141,8 +132,8 @@ func (q *Queries) UpsertReplicaSet(ctx context.Context, arg UpsertReplicaSetPara
                       controller_uid  = @controller_uid,
                       controller_kind = @controller_kind,
                       controller_name = @controller_name,
-                      created_at      = @created_at,
-                      deleted_at      = @deleted_at
+                      creation_timestamp      = @creation_timestamp,
+                      deletion_timestamp      = @deletion_timestamp
     `
 
 	_, err := q.exec(ctx, upsertReplicaSet, arg)

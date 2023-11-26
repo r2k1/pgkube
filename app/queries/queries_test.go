@@ -60,19 +60,21 @@ func TestUpsertPod(t *testing.T) {
 	queries := NewTestQueries(t)
 
 	params := UpsertPodParams{
-		PodUid:             RandomUUID(),
-		Name:               "test-pod",
-		Namespace:          "test-namespace",
+		Object: Object{
+			Uid:               RandomUUID(),
+			Name:              "test-pod",
+			Namespace:         "test-namespace",
+			Labels:            []byte(`{"label1":"value1"}`),
+			Annotations:       []byte(`{"annotation1":"value1"}`),
+			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			DeletionTimestamp: pgtype.Timestamptz{},
+		},
 		NodeName:           "test-node",
-		Labels:             []byte(`{"label1":"value1"}`),
-		Annotations:        []byte(`{"annotation1":"value1"}`),
 		ControllerUid:      RandomUUID(),
 		ControllerKind:     "Deployment",
 		ControllerName:     "test-controller",
 		RequestCpuCores:    1.0,
 		RequestMemoryBytes: 1.0,
-		CreatedAt:          pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:          pgtype.Timestamptz{},
 		StartedAt:          pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}
 
@@ -87,16 +89,18 @@ func TestUpsertJob(t *testing.T) {
 	queries := NewTestQueries(t)
 
 	params := UpsertJobParams{
-		JobUid:         RandomUUID(),
-		Name:           "test-job",
-		Namespace:      "test-namespace",
-		Labels:         []byte(`{"label1":"value1"}`),
-		Annotations:    []byte(`{"annotation1":"value1"}`),
+		Object: Object{
+			Uid:               RandomUUID(),
+			Name:              "test-job",
+			Namespace:         "test-namespace",
+			Labels:            []byte(`{"label1":"value1"}`),
+			Annotations:       []byte(`{"annotation1":"value1"}`),
+			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			DeletionTimestamp: pgtype.Timestamptz{},
+		},
 		ControllerUid:  RandomUUID(),
 		ControllerKind: "Deployment",
 		ControllerName: "test-controller",
-		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:      pgtype.Timestamptz{},
 	}
 
 	// Happy path
@@ -109,7 +113,9 @@ func TestUpsertJob(t *testing.T) {
 
 	// Test with missing required fields
 	params = UpsertJobParams{
-		JobUid: RandomUUID(),
+		Object: Object{
+			Uid: RandomUUID(),
+		},
 	}
 	err = queries.UpsertJob(context.TODO(), params)
 	require.Error(t, err)
@@ -119,16 +125,18 @@ func TestUpsertReplicaSet(t *testing.T) {
 	queries := NewTestQueries(t)
 
 	params := UpsertReplicaSetParams{
-		ReplicaSetUid:  RandomUUID(),
-		Name:           "test-replicaset",
-		Namespace:      "test-namespace",
-		Labels:         []byte(`{"label1":"value1"}`),
-		Annotations:    []byte(`{"annotation1":"value1"}`),
+		Object: Object{
+			Uid:               RandomUUID(),
+			Name:              "test-replicaset",
+			Namespace:         "test-namespace",
+			Labels:            []byte(`{"label1":"value1"}`),
+			Annotations:       []byte(`{"annotation1":"value1"}`),
+			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			DeletionTimestamp: pgtype.Timestamptz{},
+		},
 		ControllerUid:  RandomUUID(),
 		ControllerKind: "Deployment",
 		ControllerName: "test-controller",
-		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:      pgtype.Timestamptz{},
 	}
 
 	// Happy path
@@ -141,7 +149,9 @@ func TestUpsertReplicaSet(t *testing.T) {
 
 	// Test with missing required fields
 	params = UpsertReplicaSetParams{
-		ReplicaSetUid: RandomUUID(),
+		Object: Object{
+			Uid: RandomUUID(),
+		},
 	}
 	err = queries.UpsertReplicaSet(context.TODO(), params)
 	require.Error(t, err)

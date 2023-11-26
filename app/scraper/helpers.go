@@ -3,10 +3,13 @@ package scraper
 import (
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/r2k1/pgkube/app/queries"
 )
 
 func toPGTime(t metav1.Time) pgtype.Timestamptz {
@@ -54,4 +57,30 @@ func parseUUID(src string) (dst [16]byte, err error) {
 
 	copy(dst[:], buf)
 	return dst, nil
+}
+
+func objectToQuery(obj metav1.ObjectMeta) queries.Object {
+	uid, err := parsePGUUID(obj.UID)
+	if err != nil {
+		slog.Error("parsing uuid", "error", err)
+	}
+	labels, err := marshalLabels(obj.Labels)
+	if err != nil {
+		slog.Error("marshaling labels", "error", err)
+	}
+
+	annotations, err := marshalLabels(obj.Annotations)
+	if err != nil {
+		slog.Error("marshaling annotations", "error", err)
+	}
+
+	return queries.Object{
+		Uid:               uid,
+		Namespace:         obj.Namespace,
+		Name:              obj.Name,
+		CreationTimestamp: toPGTime(obj.CreationTimestamp),
+		DeletionTimestamp: ptrToPGTime(obj.DeletionTimestamp),
+		Labels:            labels,
+		Annotations:       annotations,
+	}
 }

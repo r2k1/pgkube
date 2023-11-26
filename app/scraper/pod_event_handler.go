@@ -59,35 +59,17 @@ func (h *PodEventHandler) upsertPod(obj *v1.Pod) error {
 		cpuRequest = math.Max(cpuRequest, container.Resources.Requests.Cpu().AsApproximateFloat64())
 		memoryRequest = math.Max(memoryRequest, container.Resources.Requests.Memory().AsApproximateFloat64())
 	}
-	uid, err := parsePGUUID(obj.UID)
-	if err != nil {
-		return err
-	}
-	labels, err := marshalLabels(obj.Labels)
-	if err != nil {
-		return fmt.Errorf("marshalling labels: %w", err)
-	}
-	annotations, err := marshalLabels(obj.Annotations)
-	if err != nil {
-		return fmt.Errorf("marshalling labels: %w", err)
-	}
 
 	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
 
 	queryParams := queries.UpsertPodParams{
-		PodUid:             uid,
-		Name:               obj.Name,
-		Namespace:          obj.Namespace,
-		Labels:             labels,
-		Annotations:        annotations,
+		Object:             objectToQuery(obj.ObjectMeta),
 		NodeName:           obj.Spec.NodeName,
 		ControllerUid:      controllerUid,
 		ControllerKind:     controllerKind,
 		ControllerName:     controllerName,
 		RequestCpuCores:    cpuRequest,
 		RequestMemoryBytes: memoryRequest,
-		DeletedAt:          ptrToPGTime(obj.DeletionTimestamp),
-		CreatedAt:          toPGTime(obj.CreationTimestamp),
 		StartedAt:          ptrToPGTime(obj.Status.StartTime),
 	}
 	if err := h.queries.UpsertPod(context.Background(), queryParams); err != nil {

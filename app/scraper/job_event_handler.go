@@ -46,33 +46,12 @@ func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
 
 func (h *JobEventHandler) upsertJob(obj *v1.Job) error {
 	slog.Debug("upserting job", "namespace", obj.Namespace, "job", obj.Name)
-	uid, err := parsePGUUID(obj.UID)
-	if err != nil {
-		return err
-	}
 	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
-
-	labels, err := marshalLabels(obj.Labels)
-	if err != nil {
-		return fmt.Errorf("majobhaling labels: %w", err)
-	}
-
-	annotations, err := marshalLabels(obj.Annotations)
-	if err != nil {
-		return fmt.Errorf("majobhaling annotations: %w", err)
-	}
-
 	queryParams := queries.UpsertJobParams{
-		JobUid:         uid,
-		Namespace:      obj.Namespace,
-		Name:           obj.Name,
+		Object:         objectToQuery(obj.ObjectMeta),
 		ControllerKind: controllerKind,
 		ControllerName: controllerName,
 		ControllerUid:  controllerUid,
-		CreatedAt:      toPGTime(obj.CreationTimestamp),
-		DeletedAt:      ptrToPGTime(obj.DeletionTimestamp),
-		Labels:         labels,
-		Annotations:    annotations,
 	}
 
 	if err := h.queries.UpsertJob(context.Background(), queryParams); err != nil {

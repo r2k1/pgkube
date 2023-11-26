@@ -42,6 +42,7 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 		return fmt.Errorf("adding node event handler: %w", err)
 	}
 
+	slog.Info("starting scraper")
 	factory.Start(ctx.Done())
 	factory.WaitForCacheSync(ctx.Done())
 	return nil

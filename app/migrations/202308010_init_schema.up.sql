@@ -1,52 +1,45 @@
+create table object
+(
+    uid                uuid primary key,
+    namespace          text                     not null default '',
+    name               text                     not null default '',
+    creation_timestamp timestamp with time zone not null default current_timestamp,
+    deletion_timestamp timestamp with time zone null,
+    labels             jsonb                    not null default '{}',
+    annotations        jsonb                    not null default '{}'
+);
+
 create table pod
 (
-    pod_uid              uuid primary key,
-    namespace            text                     not null,
-    name                 text                     not null,
     node_name            text                     not null,
-    created_at           timestamp with time zone not null default current_timestamp,
     started_at           timestamp with time zone not null default current_timestamp,
-    deleted_at           timestamp with time zone null,
     request_cpu_cores    double precision         not null default 0,
     request_memory_bytes double precision         not null default 0,
     controller_kind      text                     not null default '',
     controller_name      text                     not null default '',
     controller_uid       uuid null,
-    labels               jsonb                    not null default '{}',
-    annotations          jsonb                    not null default '{}'
-);
+    primary key (uid)
+) inherits (object);
 
 create table replica_set
 (
-    replica_set_uid uuid primary key,
-    namespace       text                     not null,
-    name            text                     not null,
-    controller_kind text                     not null default '',
-    controller_name text                     not null default '',
+    controller_kind text not null default '',
+    controller_name text not null default '',
     controller_uid  uuid null,
-    created_at      timestamp with time zone not null default current_timestamp,
-    deleted_at      timestamp with time zone null,
-    labels          jsonb                    not null default '{}',
-    annotations     jsonb                    not null default '{}'
-);
+    primary key (uid)
+) inherits (object);
 
 create table job
 (
-    job_uid         uuid primary key,
-    namespace       text                     not null,
-    name            text                     not null,
-    controller_kind text                     not null default '',
-    controller_name text                     not null default '',
+    controller_kind text not null default '',
+    controller_name text not null default '',
     controller_uid  uuid null,
-    created_at      timestamp with time zone not null default current_timestamp,
-    deleted_at      timestamp with time zone null,
-    labels          jsonb                    not null default '{}',
-    annotations     jsonb                    not null default '{}'
-);
+    primary key (uid)
+) inherits (object);
 
 create table pod_usage_hourly
 (
-    pod_uid                     uuid not null ,
+    pod_uid                     uuid                     not null,
     timestamp                   timestamp with time zone not null,
     memory_bytes_max            double precision         not null default 0,
     memory_bytes_min            double precision         not null default 0,
@@ -82,7 +75,7 @@ insert into config (default_price_cpu_core_hour, default_price_memory_gb_hour)
 values (0.031611, 0.004237);
 
 create view pod_controller as
-select pod.pod_uid,
+select pod.uid                                                                         as pod_uid,
        pod.name,
        pod.namespace,
        coalesce(replica_set.controller_uid, job.controller_uid, pod.controller_uid)    as controller_uid,
@@ -90,8 +83,8 @@ select pod.pod_uid,
        coalesce(replica_set.controller_name, job.controller_name, pod.controller_name) as controller_name
 from pod
          left join replica_set
-                   on pod.controller_kind = 'ReplicaSet' and pod.controller_uid = replica_set.replica_set_uid
-         left join job on pod.controller_kind = 'Job' and pod.controller_uid = job.job_uid;
+                   on pod.controller_kind = 'ReplicaSet' and pod.controller_uid = replica_set.uid
+         left join job on pod.controller_kind = 'Job' and pod.controller_uid = job.uid;
 
 create view cost_pod_hourly as
 select *,
@@ -101,12 +94,13 @@ select *,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
        pod_hours as cpu_cost
-from (select timestamp, pod.pod_uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.created_at, pod.started_at, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
-          least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
+from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.creation_timestamp, pod.started_at, pod.deletion_timestamp, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
+          least(pod_usage_hourly.timestamp + interval '1 hour', pod.deletion_timestamp, now()) -
           greatest(pod_usage_hourly.timestamp, pod.started_at)) / 3600 as pod_hours
       from pod_usage_hourly
-          inner join pod using (pod_uid)
-          inner join pod_controller using (pod_uid)) pod_usage;
+          inner join pod
+      on (pod.uid = pod_usage_hourly.pod_uid)
+          inner join pod_controller on (pod.uid = pod_controller.pod_uid)) pod_usage;
 
 
 

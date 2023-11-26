@@ -46,33 +46,13 @@ func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 
 func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
 	slog.Debug("upserting replica set", "namespace", obj.Namespace, "replica_set", obj.Name)
-	uid, err := parsePGUUID(obj.UID)
-	if err != nil {
-		return err
-	}
 	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
 
-	labels, err := marshalLabels(obj.Labels)
-	if err != nil {
-		return fmt.Errorf("marshaling labels: %w", err)
-	}
-
-	annotations, err := marshalLabels(obj.Annotations)
-	if err != nil {
-		return fmt.Errorf("marshaling annotations: %w", err)
-	}
-
 	queryParams := queries.UpsertReplicaSetParams{
-		ReplicaSetUid:  uid,
-		Namespace:      obj.Namespace,
-		Name:           obj.Name,
+		Object:         objectToQuery(obj.ObjectMeta),
 		ControllerKind: controllerKind,
 		ControllerName: controllerName,
 		ControllerUid:  controllerUid,
-		CreatedAt:      toPGTime(obj.CreationTimestamp),
-		DeletedAt:      ptrToPGTime(obj.DeletionTimestamp),
-		Labels:         labels,
-		Annotations:    annotations,
 	}
 
 	if err := h.queries.UpsertReplicaSet(context.Background(), queryParams); err != nil {
