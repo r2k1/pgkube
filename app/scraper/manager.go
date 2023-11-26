@@ -37,7 +37,6 @@ func (m *Manager) AddTarget(id string, scrapeFunc ScrapeFunc, interval time.Dura
 		return
 	}
 
-	ticker := time.NewTicker(interval)
 	scrapeCtx, cancel := context.WithCancel(m.ctx)
 
 	m.targets[id] = &targetInfo{
@@ -46,11 +45,9 @@ func (m *Manager) AddTarget(id string, scrapeFunc ScrapeFunc, interval time.Dura
 	}
 
 	go func() {
-		defer ticker.Stop()
 		// Add a random delay before the initial scrape to distribute the scraping start times
 		// nolint:gosec
 		initialDelay := time.Duration(rand.Int63n(int64(interval)))
-
 		select {
 		case <-time.After(initialDelay):
 			// Continue with the scraping after the delay
@@ -59,6 +56,9 @@ func (m *Manager) AddTarget(id string, scrapeFunc ScrapeFunc, interval time.Dura
 			slog.Info("target scraper cancelled during initial delay", "id", id)
 			return
 		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 
 		for {
 			select {
