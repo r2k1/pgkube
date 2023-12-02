@@ -3,14 +3,16 @@ package queries
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type Object struct {
 	Kind     string             `db:"kind"`
-	Metadata any                `db:"metadata"`
+	Metadata metav1.ObjectMeta  `db:"metadata"`
 	Spec     any                `db:"spec"`
 	Status   any                `db:"status"`
 	LastSeen pgtype.Timestamptz `db:"last_seen"`
@@ -27,7 +29,11 @@ on conflict (((metadata ->> 'uid')::uuid))
                   status      = @status
 `
 	_, err := q.execStruct(ctx, upsertObject, arg)
-	return err
+	if err != nil {
+		return err
+	}
+	slog.Debug("upserted object", "kind", arg.Kind, "namespace", arg.Metadata.Namespace, "name", arg.Metadata.Name, "uid", arg.Metadata.UID)
+	return nil
 }
 
 func (q *Queries) DeleteObject(ctx context.Context, uid string) error {

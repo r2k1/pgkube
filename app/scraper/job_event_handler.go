@@ -46,17 +46,9 @@ func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
 		slog.Error("upserting job", "error", fmt.Errorf("expected *v1.Job, got %T", obj))
 		return
 	}
-	if err := h.upsertJob(job); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), jobToObject(job)); err != nil {
 		slog.Error("upserting job", "error", err)
 	}
-}
-
-func (h *JobEventHandler) upsertJob(obj *v1.Job) error {
-	slog.Debug("upserting job", "namespace", obj.Namespace, "job", obj.Name)
-	if err := h.queries.UpsertObject(context.Background(), jobToObject(obj)); err != nil {
-		return fmt.Errorf("upserting job set: %w", err)
-	}
-	return nil
 }
 
 func jobToObject(job *v1.Job) queries.Object {

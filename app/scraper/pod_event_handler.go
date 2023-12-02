@@ -2,7 +2,6 @@ package scraper
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	v1 "k8s.io/api/core/v1"
@@ -41,17 +40,9 @@ func (h *PodEventHandler) OnDelete(obj interface{}) {
 }
 
 func (h *PodEventHandler) tryUpsertPod(pod *v1.Pod) {
-	if err := h.upsertPod(pod); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), podToObject(pod)); err != nil {
 		slog.Error("upserting pod", "error", err)
 	}
-}
-
-func (h *PodEventHandler) upsertPod(obj *v1.Pod) error {
-	slog.Debug("upserting pod", "namespace", obj.Namespace, "pod", obj.Name)
-	if err := h.queries.UpsertObject(context.Background(), podToObject(obj)); err != nil {
-		return fmt.Errorf("upserting pod: %w", err)
-	}
-	return nil
 }
 
 func podToObject(pod *v1.Pod) queries.Object {

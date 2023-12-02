@@ -2,17 +2,34 @@ package queries
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/lmittmann/tint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/term"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/r2k1/pgkube/app/test"
 )
+
+func init() {
+	w := os.Stderr
+	logger := slog.New(
+		tint.NewHandler(w, &tint.Options{
+			NoColor: !term.IsTerminal(int(w.Fd())),
+			Level:   slog.LevelDebug,
+		}),
+	)
+	slog.SetDefault(logger)
+}
 
 func TestWorkloadAgg(t *testing.T) {
 	queries := NewTestQueries(t)
@@ -59,8 +76,8 @@ func TestStructToMap(t *testing.T) {
 func TestUpsertObject(t *testing.T) {
 	queries := NewTestQueries(t)
 	params := Object{
-		Metadata: map[string]interface{}{
-			"uid": RandomUUID(),
+		Metadata: metav1.ObjectMeta{
+			UID: NewKUUID(),
 		},
 		Spec: map[string]interface{}{
 			"test": "test",
@@ -78,12 +95,12 @@ func TestUpsertPodUsedCPU(t *testing.T) {
 
 	params := []UpsertPodUsedCPUParams{
 		{
-			PodUid:    RandomUUID(),
+			PodUid:    NewUUID(),
 			Timestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			CpuCores:  1.0,
 		},
 		{
-			PodUid:    RandomUUID(),
+			PodUid:    NewUUID(),
 			Timestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			CpuCores:  2.0,
 		},
@@ -103,12 +120,12 @@ func TestUpsertPodUsedMemory(t *testing.T) {
 
 	params := []UpsertPodUsedMemoryParams{
 		{
-			PodUid:      RandomUUID(),
+			PodUid:      NewUUID(),
 			Timestamp:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			MemoryBytes: 1024.0,
 		},
 		{
-			PodUid:      RandomUUID(),
+			PodUid:      NewUUID(),
 			Timestamp:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			MemoryBytes: 2048.0,
 		},
@@ -134,11 +151,14 @@ func NewTestQueries(t *testing.T) *Queries {
 	return New(db)
 }
 
-func RandomUUID() pgtype.UUID {
-	uuid := uuid.NewUUID()
-	pguuid, err := parsePGUUID(uuid)
+func NewUUID() pgtype.UUID {
+	pguuid, err := parsePGUUID(NewKUUID())
 	if err != nil {
 		panic(err)
 	}
 	return pguuid
+}
+
+func NewKUUID() types.UID {
+	return uuid.NewUUID()
 }

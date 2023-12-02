@@ -47,17 +47,9 @@ func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 		slog.Error("upserting replica set", "error", fmt.Errorf("expected *v1.ReplicaSet, got %T", obj))
 		return
 	}
-	if err := h.upsertReplicaSet(rs); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), replicaSetToObject(rs)); err != nil {
 		slog.Error("upserting replica set", "error", err)
 	}
-}
-
-func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
-	slog.Debug("upserting replica set", "namespace", obj.Namespace, "replica_set", obj.Name)
-	if err := h.queries.UpsertObject(context.Background(), replicaSetToObject(obj)); err != nil {
-		return fmt.Errorf("upserting replica set: %w", err)
-	}
-	return nil
 }
 
 func replicaSetToObject(rs *v1.ReplicaSet) queries.Object {
