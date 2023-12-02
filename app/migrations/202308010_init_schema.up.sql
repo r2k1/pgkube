@@ -138,20 +138,19 @@ LANGUAGE plpgsql;
 
 
 create view pod as
-select metadata ->> 'name' as pod_name,
-        (metadata ->> 'uid')::uuid as pod_uid,
-        metadata ->> 'namespace' as namespace,
-        (status ->> 'starttime'):: timestamp as start_time,
-        spec ->> 'nodeName' as node_name,
-        metadata -> 'labels' as labels,
-        metadata -> 'annotations' as annotations,
-        deleted_at:: timestamp,
-        (select sum (convert_cpu_to_cores(replace(value ::text, '"', '')))
-        from jsonb_path_query(spec, '$.containers[*].resources.requests.cpu') as value) as request_cpu_cores,
-        (select sum (convert_memory_to_bytes(replace(value ::text, '"', '')))
-        from jsonb_path_query(spec, '$.containers[*].resources.requests.memory') as value) as request_memory_bytes
-        from object
-        where kind = 'Pod';
+select
+    metadata ->> 'name' as pod_name,
+    (metadata ->> 'uid')::uuid as pod_uid,
+    metadata ->> 'namespace' as namespace,
+    (status ->> 'starttime'):: timestamp as start_time,
+    spec ->> 'nodeName' as node_name,
+    metadata -> 'labels' as labels,
+    metadata -> 'annotations' as annotations,
+    deleted_at:: timestamp,
+    coalesce((select sum (convert_cpu_to_cores(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.cpu') as value), 0) as request_cpu_cores,
+    coalesce((select sum (convert_memory_to_bytes(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.memory') as value), 0) as request_memory_bytes
+from object
+where kind = 'Pod';
 
 
 create view cost_pod_hourly as
