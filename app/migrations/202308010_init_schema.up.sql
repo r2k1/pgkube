@@ -7,7 +7,7 @@ create table object
     deleted_at timestamp with time zone
 );
 
-create unique index idx_unique_metadata_uid on object ((metadata ->> 'uid') );
+create unique index idx_unique_metadata_uid on object ((metadata ->> 'uid'));
 
 create table pod_usage_hourly
 (
@@ -63,8 +63,80 @@ from controller_hierarchy ch
     cross join lateral jsonb_array_elements(k.metadata -> 'ownerReferences') k_owner_ref
 where ch.owner_ref ->> 'controller' = 'true')
 select kind,
-       object_uid,
-       owner_ref ->> 'uid' as controller_uid, owner_ref ->> 'kind' as controller_type, owner_ref ->> 'name' as controller_name, max (level) over (partition by object_uid) as controller_level
+       object_uid::uuid as object_uid,
+       (owner_ref ->> 'uid')::uuid as controller_uid,
+    owner_ref ->> 'kind' as controller_type,
+    owner_ref ->> 'name' as controller_name,
+    max (level) over (partition by object_uid) as controller_level
 from controller_hierarchy
 where level = (select max (level) from controller_hierarchy ch2 where ch2.object_uid = controller_hierarchy.object_uid)
 order by object_uid;
+
+
+create view pod as
+select t.metadata ->> 'name' AS pod_name,
+        (t.metadata ->> 'uid')::uuid AS pod_uid,
+        t.metadata ->> 'namespace' AS namespace,
+        (t.status ->> 'startTime')::timestamp AS start_time,
+        t.spec ->> 'nodeName' AS node_name,
+        (t.metadata ->> 'labels')::jsonb as labels,
+        (t.metadata ->> 'annotations')::jsonb as annotations,
+        t.deleted_at::timestamp,
+        res.request_memory_bytes,
+        res.request_cpu_cores
+        from object t
+        cross join lateral (
+        select sum (
+        case
+    -- Memory conversion cases
+        when container.value -> 'resources' -> 'requests' ->> 'memory' SIMILAR to '%[0-9]+Ei' then
+        (substring (container.value -> 'resources' -> 'requests' ->> 'memory' from
+        '[0-9]+'):: numeric * 1024 ^ 6)
+    -- Similar cases for Pi, Ti, Gi, Mi, Ki, M, K, and default
+        end
+        ) AS request_memory_bytes,
+        sum (
+        case
+    -- CPU conversion cases
+        when container.value -> 'resources' -> 'requests' ->> 'cpu' like '%m' then
+        (left (container.value -> 'resources' -> 'requests' ->> 'cpu', -1):: numeric / 1000)
+        else
+        (container.value -> 'resources' -> 'requests' ->> 'cpu'):: numeric
+        end
+        ) AS request_cpu_cores
+        from jsonb_array_elements(t.spec -> 'containers') as container(value)
+        ) AS res
+        where kind = 'Pod';
+
+create view cost_pod_hourly as
+select *,
+       greatest(request_memory_bytes, memory_bytes_avg) *
+       (select coalesce(price_memory_gigabyte_hour, default_price_memory_gb_hour) from config) / 1000000000 *
+       pod_hours as memory_cost,
+       greatest(request_cpu_cores, cpu_cores_avg) *
+       (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
+       pod_hours as cpu_cost
+from (select timestamp,
+          pod.pod_uid,
+          pod.namespace,
+          pod.pod_name,
+          pod.node_name,
+          pod.start_time,
+          pod.deleted_at,
+          pod.request_memory_bytes,
+          pod.request_cpu_cores,
+          pod.labels,
+          pod.annotations,
+          object_controller.controller_uid,
+          object_controller.controller_type as controller_kind,
+          object_controller.controller_name,
+          cpu_cores_avg,
+          cpu_cores_max,
+          memory_bytes_avg,
+          memory_bytes_max,
+          extract(epoch from
+          least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
+          greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600 as pod_hours
+      from pod_usage_hourly
+          inner join pod using (pod_uid)
+          inner join object_controller on (pod_uid = object_controller.object_uid::uuid)) pod_usage;
