@@ -35,7 +35,7 @@ func (q *Queries) WithTx(tx pgx.Tx) *Queries {
 }
 
 // nolint: unparam
-func (q *Queries) exec(ctx context.Context, sql string, data interface{}) (pgconn.CommandTag, error) {
+func (q *Queries) execStruct(ctx context.Context, sql string, data interface{}) (pgconn.CommandTag, error) {
 	dataMap, err := structToNamedArgs(data)
 	if err != nil {
 		return pgconn.CommandTag{}, err

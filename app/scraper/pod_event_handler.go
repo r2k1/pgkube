@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -21,19 +20,18 @@ func NewPodEventHandler(queries *queries.Queries, cache *Cache) *PodEventHandler
 		queries: queries,
 		cache:   cache,
 	}
-
 }
 
 func (h *PodEventHandler) OnAdd(obj interface{}, isInInitialList bool) {
 	pod := obj.(*v1.Pod)
-	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
 	h.tryUpsertPod(pod)
+	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
 }
 
 func (h *PodEventHandler) OnUpdate(oldObj, obj interface{}) {
 	pod := obj.(*v1.Pod)
-	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
 	h.tryUpsertPod(pod)
+	h.cache.StorePodUUID(pod.Namespace, pod.Name, pod.UID)
 }
 
 func (h *PodEventHandler) OnDelete(obj interface{}) {
@@ -50,30 +48,17 @@ func (h *PodEventHandler) tryUpsertPod(pod *v1.Pod) {
 
 func (h *PodEventHandler) upsertPod(obj *v1.Pod) error {
 	slog.Debug("upserting pod", "namespace", obj.Namespace, "pod", obj.Name)
-	var cpuRequest, memoryRequest float64
-	for _, container := range obj.Spec.Containers {
-		cpuRequest += container.Resources.Requests.Cpu().AsApproximateFloat64()
-		memoryRequest += container.Resources.Requests.Memory().AsApproximateFloat64()
-	}
-	for _, container := range obj.Spec.InitContainers {
-		cpuRequest = math.Max(cpuRequest, container.Resources.Requests.Cpu().AsApproximateFloat64())
-		memoryRequest = math.Max(memoryRequest, container.Resources.Requests.Memory().AsApproximateFloat64())
-	}
-
-	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
-
-	queryParams := queries.UpsertPodParams{
-		Object:             objectToQuery(obj.ObjectMeta),
-		NodeName:           obj.Spec.NodeName,
-		ControllerUid:      controllerUid,
-		ControllerKind:     controllerKind,
-		ControllerName:     controllerName,
-		RequestCpuCores:    cpuRequest,
-		RequestMemoryBytes: memoryRequest,
-		StartedAt:          ptrToPGTime(obj.Status.StartTime),
-	}
-	if err := h.queries.UpsertPod(context.Background(), queryParams); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), podToObject(obj)); err != nil {
 		return fmt.Errorf("upserting pod: %w", err)
 	}
 	return nil
+}
+
+func podToObject(pod *v1.Pod) queries.Object {
+	return queries.Object{
+		Kind:     "Pod",
+		Metadata: pod.ObjectMeta,
+		Spec:     pod.Spec,
+		Status:   pod.Status,
+	}
 }

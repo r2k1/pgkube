@@ -1,41 +1,13 @@
 create table object
 (
-    uid                uuid primary key,
-    namespace          text                     not null default '',
-    name               text                     not null default '',
-    creation_timestamp timestamp with time zone not null default current_timestamp,
-    deletion_timestamp timestamp with time zone null,
-    labels             jsonb                    not null default '{}',
-    annotations        jsonb                    not null default '{}'
+    kind       text  not null,
+    metadata   jsonb not null default '{}',
+    spec       jsonb not null default '{}',
+    status     jsonb not null default '{}',
+    deleted_at timestamp with time zone
 );
 
-create table pod
-(
-    node_name            text                     not null,
-    started_at           timestamp with time zone not null default current_timestamp,
-    request_cpu_cores    double precision         not null default 0,
-    request_memory_bytes double precision         not null default 0,
-    controller_kind      text                     not null default '',
-    controller_name      text                     not null default '',
-    controller_uid       uuid null,
-    primary key (uid)
-) inherits (object);
-
-create table replica_set
-(
-    controller_kind text not null default '',
-    controller_name text not null default '',
-    controller_uid  uuid null,
-    primary key (uid)
-) inherits (object);
-
-create table job
-(
-    controller_kind text not null default '',
-    controller_name text not null default '',
-    controller_uid  uuid null,
-    primary key (uid)
-) inherits (object);
+create unique index idx_unique_metadata_uid on object ((metadata ->> 'uid') );
 
 create table pod_usage_hourly
 (
@@ -74,55 +46,25 @@ create table config
 insert into config (default_price_cpu_core_hour, default_price_memory_gb_hour)
 values (0.031611, 0.004237);
 
-create view pod_controller as
-select pod.uid                                                                         as pod_uid,
-       pod.name,
-       pod.namespace,
-       coalesce(replica_set.controller_uid, job.controller_uid, pod.controller_uid)    as controller_uid,
-       coalesce(replica_set.controller_kind, job.controller_kind, pod.controller_kind) as controller_kind,
-       coalesce(replica_set.controller_name, job.controller_name, pod.controller_name) as controller_name
-from pod
-         left join replica_set
-                   on pod.controller_kind = 'ReplicaSet' and pod.controller_uid = replica_set.uid
-         left join job on pod.controller_kind = 'Job' and pod.controller_uid = job.uid;
-
-create view cost_pod_hourly as
-select *,
-       greatest(request_memory_bytes, memory_bytes_avg) *
-       (select coalesce(price_memory_gigabyte_hour, default_price_memory_gb_hour) from config) / 1000000000 *
-       pod_hours as memory_cost,
-       greatest(request_cpu_cores, cpu_cores_avg) *
-       (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
-       pod_hours as cpu_cost
-from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.creation_timestamp, pod.started_at, pod.deletion_timestamp, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
-          least(pod_usage_hourly.timestamp + interval '1 hour', pod.deletion_timestamp, now()) -
-          greatest(pod_usage_hourly.timestamp, pod.started_at)) / 3600 as pod_hours
-      from pod_usage_hourly
-          inner join pod
-      on (pod.uid = pod_usage_hourly.pod_uid)
-          inner join pod_controller on (pod.uid = pod_controller.pod_uid)) pod_usage;
-
-
-
-create view cost_workload_daily as
-select date_trunc('day', timestamp) as timestamp,
-       namespace,
-       controller_kind,
-       controller_name,
-       sum(memory_bytes_avg * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as memory_bytes_avg,
-       max(memory_bytes_max)        as memory_bytes_max,
-       sum(request_memory_bytes * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as request_memory_bytes_avg,
-       sum(cpu_cores_avg * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as cpu_cores_avg,
-       max(cpu_cores_max)           as cpu_cores_max,
-       sum(request_cpu_cores * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as request_cpu_cores_avg,
-       sum(pod_hours)               as pod_hours,
-       sum(memory_cost)             as memory_cost,
-       sum(cpu_cost)                as cpu_cost,
-       sum(memory_cost + cpu_cost)  as total_cost
-from cost_pod_hourly
-group by 1, namespace, controller_kind, controller_name
-order by timestamp asc, total_cost desc;
+create view object_controller as
+with recursive controller_hierarchy as (select metadata ->> 'uid' as object_uid,
+        jsonb_array_elements(metadata -> 'ownerReferences') as owner_ref,
+        1 as level,
+        kind
+        from object
+        where metadata -> 'ownerReferences' is not null
+        union all
+select ch.object_uid,
+       k_owner_ref,
+       ch.level + 1 as level,
+       ch.kind
+from controller_hierarchy ch
+         join object k on ch.owner_ref ->> 'uid' = k.metadata ->> 'uid'
+    cross join lateral jsonb_array_elements(k.metadata -> 'ownerReferences') k_owner_ref
+where ch.owner_ref ->> 'controller' = 'true')
+select kind,
+       object_uid,
+       owner_ref ->> 'uid' as controller_uid, owner_ref ->> 'kind' as controller_type, owner_ref ->> 'name' as controller_name, max (level) over (partition by object_uid) as controller_level
+from controller_hierarchy
+where level = (select max (level) from controller_hierarchy ch2 where ch2.object_uid = controller_hierarchy.object_uid)
+order by object_uid;

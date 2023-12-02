@@ -56,105 +56,21 @@ func TestStructToMap(t *testing.T) {
 	// Additional test cases can be added here
 }
 
-func TestUpsertPod(t *testing.T) {
+func TestUpsertObject(t *testing.T) {
 	queries := NewTestQueries(t)
-
-	params := UpsertPodParams{
-		Object: Object{
-			Uid:               RandomUUID(),
-			Name:              "test-pod",
-			Namespace:         "test-namespace",
-			Labels:            []byte(`{"label1":"value1"}`),
-			Annotations:       []byte(`{"annotation1":"value1"}`),
-			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-			DeletionTimestamp: pgtype.Timestamptz{},
+	params := Object{
+		Metadata: map[string]interface{}{
+			"uid": RandomUUID(),
 		},
-		NodeName:           "test-node",
-		ControllerUid:      RandomUUID(),
-		ControllerKind:     "Deployment",
-		ControllerName:     "test-controller",
-		RequestCpuCores:    1.0,
-		RequestMemoryBytes: 1.0,
-		StartedAt:          pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}
-
-	err := queries.UpsertPod(context.TODO(), params)
-	require.NoError(t, err)
-
-	err = queries.UpsertPod(context.TODO(), params)
-	require.NoError(t, err)
-}
-
-func TestUpsertJob(t *testing.T) {
-	queries := NewTestQueries(t)
-
-	params := UpsertJobParams{
-		Object: Object{
-			Uid:               RandomUUID(),
-			Name:              "test-job",
-			Namespace:         "test-namespace",
-			Labels:            []byte(`{"label1":"value1"}`),
-			Annotations:       []byte(`{"annotation1":"value1"}`),
-			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-			DeletionTimestamp: pgtype.Timestamptz{},
+		Spec: map[string]interface{}{
+			"test": "test",
 		},
-		ControllerUid:  RandomUUID(),
-		ControllerKind: "Deployment",
-		ControllerName: "test-controller",
-	}
-
-	// Happy path
-	err := queries.UpsertJob(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test idempotency
-	err = queries.UpsertJob(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test with missing required fields
-	params = UpsertJobParams{
-		Object: Object{
-			Uid: RandomUUID(),
+		Status: map[string]interface{}{
+			"test": "test",
 		},
 	}
-	err = queries.UpsertJob(context.TODO(), params)
-	require.Error(t, err)
-}
-
-func TestUpsertReplicaSet(t *testing.T) {
-	queries := NewTestQueries(t)
-
-	params := UpsertReplicaSetParams{
-		Object: Object{
-			Uid:               RandomUUID(),
-			Name:              "test-replicaset",
-			Namespace:         "test-namespace",
-			Labels:            []byte(`{"label1":"value1"}`),
-			Annotations:       []byte(`{"annotation1":"value1"}`),
-			CreationTimestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-			DeletionTimestamp: pgtype.Timestamptz{},
-		},
-		ControllerUid:  RandomUUID(),
-		ControllerKind: "Deployment",
-		ControllerName: "test-controller",
-	}
-
-	// Happy path
-	err := queries.UpsertReplicaSet(context.TODO(), params)
+	err := queries.UpsertObject(context.TODO(), params)
 	require.NoError(t, err)
-
-	// Test idempotency
-	err = queries.UpsertReplicaSet(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test with missing required fields
-	params = UpsertReplicaSetParams{
-		Object: Object{
-			Uid: RandomUUID(),
-		},
-	}
-	err = queries.UpsertReplicaSet(context.TODO(), params)
-	require.Error(t, err)
 }
 
 func TestUpsertPodUsedCPU(t *testing.T) {

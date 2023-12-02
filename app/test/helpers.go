@@ -27,6 +27,7 @@ var (
 	postgresDBName   = "testdb"
 	container        testcontainers.Container
 	migrateOnce      = sync.Once{}
+	migrateErr       error
 	mainConn         *pgxpool.Pool
 	mainDBLock       = sync.Mutex{}
 )
@@ -71,11 +72,12 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 		defer cancel()
 		container = MustStartPostgresContainer(t, ctx)
 		mainConnString := connectionString(t, ctx, container, postgresDBName)
-		var err error
-		mainConn, err = pgxpool.New(ctx, mainConnString)
-		require.NoError(t, err)
+		mainConn, migrateErr = pgxpool.New(ctx, mainConnString)
+		require.NoError(t, migrateErr)
 		Migrate(t, mainConnString, migrationsPath)
 	})
+
+	require.NoError(t, migrateErr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

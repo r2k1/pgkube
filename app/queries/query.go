@@ -8,6 +8,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Object struct {
+	Kind     string             `db:"kind"`
+	Metadata any                `db:"metadata"`
+	Spec     any                `db:"spec"`
+	Status   any                `db:"status"`
+	LastSeen pgtype.Timestamptz `db:"last_seen"`
+}
+
+func (q *Queries) UpsertObject(ctx context.Context, arg Object) error {
+	const upsertObject = `
+insert into object (kind, metadata, spec, status)
+values (@kind, @metadata, @spec, @status)
+on conflict ((metadata ->> 'uid'))
+    do update set kind        = @kind,
+                  metadata    = @metadata,
+                  spec        = @spec,
+                  status      = @status
+`
+	_, err := q.execStruct(ctx, upsertObject, arg)
+	return err
+}
+
+func (q *Queries) DeleteObject(ctx context.Context, uid string) error {
+	const deleteObject = `
+update object set deleted_at = now() where metadata ->> 'uid' = $1 and deleted_at is null 
+`
+	_, err := q.db.Exec(ctx, deleteObject, uid)
+	return err
+}
+
 type PodUsageHourly struct {
 	PodUid                   pgtype.UUID        `db:"pod_uid"`
 	Timestamp                pgtype.Timestamptz `db:"timestamp"`
@@ -38,106 +68,6 @@ limit 100
 		return nil, fmt.Errorf("failed to collect pod usage rows: %w", err)
 	}
 	return data, nil
-}
-
-type Object struct {
-	Uid               pgtype.UUID        `db:"uid"`
-	Name              string             `db:"name"`
-	Namespace         string             `db:"namespace"`
-	Labels            []byte             `db:"labels"`
-	Annotations       []byte             `db:"annotations"`
-	CreationTimestamp pgtype.Timestamptz `db:"creation_timestamp"`
-	DeletionTimestamp pgtype.Timestamptz `db:"deletion_timestamp"`
-}
-
-type UpsertPodParams struct {
-	Object
-	NodeName           string             `db:"node_name"`
-	ControllerUid      pgtype.UUID        `db:"controller_uid"`
-	ControllerKind     string             `db:"controller_kind"`
-	ControllerName     string             `db:"controller_name"`
-	RequestCpuCores    float64            `db:"request_cpu_cores"`
-	RequestMemoryBytes float64            `db:"request_memory_bytes"`
-	StartedAt          pgtype.Timestamptz `db:"started_at"`
-}
-
-func (q *Queries) UpsertPod(ctx context.Context, arg UpsertPodParams) error {
-	const upsertPod = `insert into pod 
-    (uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind, controller_name, request_cpu_cores, request_memory_bytes, creation_timestamp, deletion_timestamp, started_at)
-values 
-    (@uid, @name, @namespace, @node_name, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @request_cpu_cores, @request_memory_bytes, @creation_timestamp, @deletion_timestamp, @started_at)
-on conflict (uid)
-    do update set name                 = @name,
-                  namespace            = @namespace,
-                  node_name            = @node_name,
-                  labels               = @labels,
-                  annotations          = @annotations,
-                  controller_uid       = @controller_uid,
-                  controller_kind      = @controller_kind,
-                  controller_name      = @controller_name,
-                  request_cpu_cores    = @request_cpu_cores,
-                  request_memory_bytes = @request_memory_bytes,
-                  creation_timestamp           = @creation_timestamp,
-                  deletion_timestamp           = @deletion_timestamp,
-                  started_at           = @started_at
-`
-	_, err := q.exec(ctx, upsertPod, arg)
-	return err
-}
-
-type UpsertJobParams struct {
-	Object
-	ControllerUid  pgtype.UUID `db:"controller_uid"`
-	ControllerKind string      `db:"controller_kind"`
-	ControllerName string      `db:"controller_name"`
-}
-
-func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) error {
-	const upsertJob = `insert into job(uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
-                creation_timestamp, deletion_timestamp)
-values (@uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name,
-        @creation_timestamp, @deletion_timestamp)
-on conflict (uid)
-    do update set name               = @name,
-                  namespace          = @namespace,
-                  labels             = @labels,
-                  annotations        = @annotations,
-                  controller_uid     = @controller_uid,
-                  controller_kind    = @controller_kind,
-                  controller_name    = @controller_name,
-                  creation_timestamp = @creation_timestamp,
-                  deletion_timestamp = @deletion_timestamp
-`
-	_, err := q.exec(ctx, upsertJob, arg)
-	return err
-}
-
-type UpsertReplicaSetParams struct {
-	Object
-	ControllerUid  pgtype.UUID `db:"controller_uid"`
-	ControllerKind string      `db:"controller_kind"`
-	ControllerName string      `db:"controller_name"`
-}
-
-func (q *Queries) UpsertReplicaSet(ctx context.Context, arg UpsertReplicaSetParams) error {
-	const upsertReplicaSet = `
-    insert into replica_set (uid, name, namespace, labels, annotations, controller_uid, controller_kind,
-                             controller_name, creation_timestamp, deletion_timestamp)
-    values (@uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @creation_timestamp, @deletion_timestamp)
-    on conflict (uid)
-        do update set name            = @name,
-                      namespace       = @namespace,
-                      labels          = @labels,
-                      annotations     = @annotations,
-                      controller_uid  = @controller_uid,
-                      controller_kind = @controller_kind,
-                      controller_name = @controller_name,
-                      creation_timestamp      = @creation_timestamp,
-                      deletion_timestamp      = @deletion_timestamp
-    `
-
-	_, err := q.exec(ctx, upsertReplicaSet, arg)
-	return err
 }
 
 type UpsertPodUsedCPUParams struct {

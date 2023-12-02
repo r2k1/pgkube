@@ -30,6 +30,14 @@ func (h *ReplicaSetEventHandler) OnUpdate(oldObj, newObj interface{}) {
 }
 
 func (h *ReplicaSetEventHandler) OnDelete(obj interface{}) {
+	rs, ok := obj.(*v1.ReplicaSet)
+	if !ok {
+		slog.Error("deleting ReplicaSet", "error", fmt.Errorf("expected *v1.ReplicaSet, got %T", obj))
+		return
+	}
+	if err := h.queries.DeleteObject(context.Background(), string(rs.GetUID())); err != nil {
+		slog.Error("deleting ReplicaSet", "error", err)
+	}
 	h.tryUpsertReplicaSet(obj)
 }
 
@@ -46,17 +54,17 @@ func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 
 func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
 	slog.Debug("upserting replica set", "namespace", obj.Namespace, "replica_set", obj.Name)
-	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
-
-	queryParams := queries.UpsertReplicaSetParams{
-		Object:         objectToQuery(obj.ObjectMeta),
-		ControllerKind: controllerKind,
-		ControllerName: controllerName,
-		ControllerUid:  controllerUid,
-	}
-
-	if err := h.queries.UpsertReplicaSet(context.Background(), queryParams); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), replicaSetToObject(obj)); err != nil {
 		return fmt.Errorf("upserting replica set: %w", err)
 	}
 	return nil
+}
+
+func replicaSetToObject(rs *v1.ReplicaSet) queries.Object {
+	return queries.Object{
+		Kind:     "ReplicaSet",
+		Metadata: rs.ObjectMeta,
+		Spec:     rs.Spec,
+		Status:   rs.Status,
+	}
 }
