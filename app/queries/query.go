@@ -20,7 +20,7 @@ func (q *Queries) UpsertObject(ctx context.Context, arg Object) error {
 	const upsertObject = `
 insert into object (kind, metadata, spec, status)
 values (@kind, @metadata, @spec, @status)
-on conflict ((metadata ->> 'uid'))
+on conflict (((metadata ->> 'uid')::uuid))
     do update set kind        = @kind,
                   metadata    = @metadata,
                   spec        = @spec,
