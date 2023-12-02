@@ -9,10 +9,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// nolint:unused
 func toPGTime(t metav1.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t.UTC(), Valid: true}
 }
 
+// nolint:unused
 func ptrToPGTime(t *metav1.Time) pgtype.Timestamptz {
 	if t == nil {
 		return pgtype.Timestamptz{Valid: false}
