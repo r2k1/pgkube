@@ -62,78 +62,52 @@ from controller
          left join controller controller_controller on controller.controller_uid = controller_controller.uid;
 
 
-CREATE
-OR REPLACE FUNCTION convert_memory_to_bytes(input VARCHAR)
-RETURNS BIGINT AS $$
-DECLARE
-num_part BIGINT;
-    unit_part
-VARCHAR;
-    result
-BIGINT;
-BEGIN
+create or replace function convert_memory_to_bytes(input varchar) returns bigint as
+$$
+declare
+    num_part  bigint;
+    unit_part varchar;
+    result    bigint;
+begin
     -- Extract numeric part
-    num_part
-:= SUBSTRING(input FROM '^[0-9]+')::BIGINT;
-
+    num_part := substring(input from '^[0-9]+')::BIGINT;
     -- Extract unit part
-    unit_part
-:= SUBSTRING(input FROM '[a-zA-Z]+$');
-
+    unit_part := substring(input from '[a-zA-Z]+$');
     -- Calculate bytes based on unit
-CASE unit_part
-WHEN 'E'  THEN result := num_part * 1000000000000000000;
-WHEN 'P'  THEN result := num_part * 1000000000000000;
-WHEN 'T'  THEN result := num_part * 1000000000000;
-WHEN 'G'  THEN result := num_part * 1000000000;
-WHEN 'M'  THEN result := num_part * 1000000;
-WHEN 'K'  THEN result := num_part * 1000;
-WHEN 'Ei' THEN result := num_part * 1024^6;
-WHEN 'Pi' THEN result := num_part * 1024^5;
-WHEN 'Ti' THEN result := num_part * 1024^4;
-WHEN 'Gi' THEN result := num_part * 1024^3;
-WHEN 'Mi' THEN result := num_part * 1024^2;
-WHEN 'Ki' THEN result := num_part * 1024;
-ELSE result := num_part; -- Assuming no suffix means bytes
-END
-CASE;
+case unit_part when 'E' then result := num_part * 1000000000000000000;
+when 'P' then result := num_part * 1000000000000000;
+when 'T' then result := num_part * 1000000000000;
+when 'G' then result := num_part * 1000000000;
+when 'M' then result := num_part * 1000000;
+when 'K' then result := num_part * 1000;
+when 'Ei' then result := num_part * 1024 ^ 6;
+when 'Pi' then result := num_part * 1024 ^ 5;
+when 'Ti' then result := num_part * 1024 ^ 4;
+when 'Gi' then result := num_part * 1024 ^ 3;
+when 'Mi' then result := num_part * 1024 ^ 2;
+when 'Ki' then result := num_part * 1024;
+else result := num_part; -- Assuming no suffix means bytes
+end case;
 
-RETURN result;
-END;
+return result;
+end;
+$$ language plpgsql;
+
+
+create or replace function convert_cpu_to_cores(input varchar) returns numeric as
 $$
-LANGUAGE plpgsql;
-
-
-CREATE
-OR REPLACE FUNCTION convert_cpu_to_cores(input VARCHAR)
-RETURNS NUMERIC AS $$
-DECLARE
-num_part NUMERIC;
-    is_millicore
-BOOLEAN;
-BEGIN
+declare
+num_part     numeric;
+    is_millicore boolean;
+begin
     -- Check if input is in millicores
-    is_millicore
-:= input LIKE '%m';
-
+    is_millicore := input like '%m';
     -- Extract numeric part
-    IF
-is_millicore THEN
-        num_part := SUBSTRING(input FROM '^[0-9]+')::NUMERIC;
-ELSE
-        num_part := input::NUMERIC;
-END IF;
-
+    if is_millicore then num_part := substring(input from '^[0-9]+')::numeric; else num_part := input::numeric; end if;
     -- Convert millicores to cores if necessary
-    IF
-is_millicore THEN
-        RETURN num_part / 1000;
-ELSE
-        RETURN num_part;
-END IF;
-END;
-$$
-LANGUAGE plpgsql;
+    if is_millicore then return num_part / 1000; else return num_part; end if;
+end;
+$$ language plpgsql;
 
 
 create view pod as
