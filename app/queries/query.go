@@ -31,7 +31,7 @@ func (q *Queries) UpsertObject(ctx context.Context, kind string, object any) err
 
 	data, err := json.Marshal(object)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal object: %w", err)
 	}
 	type k8sObject struct {
 		Metadata json.RawMessage `json:"metadata"`
@@ -41,7 +41,7 @@ func (q *Queries) UpsertObject(ctx context.Context, kind string, object any) err
 	var newObj k8sObject
 	err = json.Unmarshal(data, &newObj)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal object: %w", err)
 	}
 
 	uo := UpsertObject{
