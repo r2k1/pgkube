@@ -138,8 +138,8 @@ LANGUAGE plpgsql;
 
 create view pod as
 select
-    metadata ->> 'name' as pod_name,
-    uid as pod_uid,
+    metadata ->> 'name' as name,
+    uid,
     metadata ->> 'namespace' as namespace,
     (status ->> 'starttime'):: timestamp as start_time,
     spec ->> 'nodeName' as node_name,
@@ -160,10 +160,10 @@ select *,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
        pod_hours as cpu_cost
-from (select timestamp, pod.pod_uid, pod.namespace, pod.pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
+from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
           least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
           greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600 as pod_hours
       from pod_usage_hourly
-          inner join pod using (pod_uid)
+          inner join pod on (pod_usage_hourly.pod_uid = pod.uid)
           inner join object_controller
       on (pod_uid = object_controller.uid::uuid)) pod_usage;
