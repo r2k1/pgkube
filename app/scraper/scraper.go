@@ -2,7 +2,6 @@ package scraper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -42,6 +41,7 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 		return fmt.Errorf("adding node event handler: %w", err)
 	}
 
+	slog.Info("starting scraper")
 	factory.Start(ctx.Done())
 	factory.WaitForCacheSync(ctx.Done())
 	return nil
@@ -49,17 +49,6 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 
 func truncateToHour(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
-}
-
-func marshalLabels(label map[string]string) ([]byte, error) {
-	if len(label) == 0 {
-		return []byte("{}"), nil
-	}
-	data, err := json.Marshal(label)
-	if err != nil {
-		return nil, fmt.Errorf("marshalling labels: %w", err)
-	}
-	return data, nil
 }
 
 func WithTransaction(ctx context.Context, conn *pgx.Conn, f func(tx pgx.Tx) error) error {

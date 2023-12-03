@@ -9,10 +9,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// nolint:unused
 func toPGTime(t metav1.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t.UTC(), Valid: true}
 }
 
+// nolint:unused
 func ptrToPGTime(t *metav1.Time) pgtype.Timestamptz {
 	if t == nil {
 		return pgtype.Timestamptz{Valid: false}
@@ -23,16 +25,6 @@ func ptrToPGTime(t *metav1.Time) pgtype.Timestamptz {
 func parsePGUUID(src types.UID) (pgtype.UUID, error) {
 	uid, err := parseUUID(string(src))
 	return pgtype.UUID{Bytes: uid, Valid: err == nil}, err
-}
-
-func controller(ref []metav1.OwnerReference) (uid pgtype.UUID, kind, name string) {
-	for _, r := range ref {
-		if r.Controller != nil && *r.Controller {
-			uid, _ = parsePGUUID(r.UID)
-			return uid, r.Kind, r.Name
-		}
-	}
-	return pgtype.UUID{}, "", ""
 }
 
 // parseUUID converts a string UUID in standard form to a byte array.

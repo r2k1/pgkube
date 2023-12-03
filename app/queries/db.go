@@ -35,7 +35,7 @@ func (q *Queries) WithTx(tx pgx.Tx) *Queries {
 }
 
 // nolint: unparam
-func (q *Queries) exec(ctx context.Context, sql string, data interface{}) (pgconn.CommandTag, error) {
+func (q *Queries) execStruct(ctx context.Context, sql string, data interface{}) (pgconn.CommandTag, error) {
 	dataMap, err := structToNamedArgs(data)
 	if err != nil {
 		return pgconn.CommandTag{}, err
@@ -55,14 +55,27 @@ func structToNamedArgs(obj interface{}) (pgx.NamedArgs, error) {
 		return nil, fmt.Errorf("expected a struct, received %T", obj)
 	}
 
-	result := make(map[string]any)
+	result := make(map[string]interface{})
 	typ := val.Type()
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
-		dbTag := field.Tag.Get("db")
-		if dbTag != "" {
-			result[dbTag] = val.Field(i).Interface()
+		fieldValue := val.Field(i)
+
+		// If the field is an embedded struct, recursively call structToNamedArgs
+		if field.Anonymous && fieldValue.Kind() == reflect.Struct {
+			embeddedResult, err := structToNamedArgs(fieldValue.Interface())
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range embeddedResult {
+				result[k] = v
+			}
+		} else {
+			dbTag := field.Tag.Get("db")
+			if dbTag != "" {
+				result[dbTag] = fieldValue.Interface()
+			}
 		}
 	}
 

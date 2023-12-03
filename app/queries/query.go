@@ -3,10 +3,53 @@ package queries
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+type Object struct {
+	Kind     string             `db:"kind"`
+	Uid      pgtype.UUID        `db:"uid"`
+	Metadata metav1.ObjectMeta  `db:"metadata"`
+	Spec     any                `db:"spec"`
+	Status   any                `db:"status"`
+	LastSeen pgtype.Timestamptz `db:"last_seen"`
+}
+
+func (q *Queries) UpsertObject(ctx context.Context, object Object) error {
+	var err error
+	object.Uid, err = parsePGUUID(object.Metadata.UID)
+	if err != nil {
+		return fmt.Errorf("parsing object UID: %w", err)
+	}
+	object.Metadata.ManagedFields = nil // this field is noisy and not useful for most cases
+	const upsertObject = `
+insert into object (kind, uid, metadata, spec, status)
+values (@kind, @uid, @metadata, @spec, @status)
+on conflict (uid)
+    do update set kind        = @kind,
+                  metadata    = @metadata,
+                  spec        = @spec,
+                  status      = @status
+`
+	_, err = q.execStruct(ctx, upsertObject, object)
+	if err != nil {
+		return err
+	}
+	slog.Debug("upserted object", "kind", object.Kind, "namespace", object.Metadata.Namespace, "name", object.Metadata.Name, "uid", object.Metadata.UID)
+	return nil
+}
+
+func (q *Queries) DeleteObject(ctx context.Context, uid string) error {
+	const deleteObject = `
+update object set deleted_at = now() where metadata ->> 'uid' = $1 and deleted_at is null 
+`
+	_, err := q.db.Exec(ctx, deleteObject, uid)
+	return err
+}
 
 type PodUsageHourly struct {
 	PodUid                   pgtype.UUID        `db:"pod_uid"`
@@ -38,115 +81,6 @@ limit 100
 		return nil, fmt.Errorf("failed to collect pod usage rows: %w", err)
 	}
 	return data, nil
-}
-
-type UpsertPodParams struct {
-	PodUid             pgtype.UUID        `db:"pod_uid"`
-	Name               string             `db:"name"`
-	Namespace          string             `db:"namespace"`
-	NodeName           string             `db:"node_name"`
-	Labels             []byte             `db:"labels"`
-	Annotations        []byte             `db:"annotations"`
-	ControllerUid      pgtype.UUID        `db:"controller_uid"`
-	ControllerKind     string             `db:"controller_kind"`
-	ControllerName     string             `db:"controller_name"`
-	RequestCpuCores    float64            `db:"request_cpu_cores"`
-	RequestMemoryBytes float64            `db:"request_memory_bytes"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at"`
-	DeletedAt          pgtype.Timestamptz `db:"deleted_at"`
-	StartedAt          pgtype.Timestamptz `db:"started_at"`
-}
-
-func (q *Queries) UpsertPod(ctx context.Context, arg UpsertPodParams) error {
-	const upsertPod = `insert into pod 
-    (pod_uid, name, namespace, node_name, labels, annotations, controller_uid, controller_kind, controller_name, request_cpu_cores, request_memory_bytes, created_at, deleted_at, started_at)
-values 
-    (@pod_uid, @name, @namespace, @node_name, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @request_cpu_cores, @request_memory_bytes, @created_at, @deleted_at, @started_at)
-on conflict (pod_uid)
-    do update set name                 = @name,
-                  namespace            = @namespace,
-                  node_name            = @node_name,
-                  labels               = @labels,
-                  annotations          = @annotations,
-                  controller_uid       = @controller_uid,
-                  controller_kind      = @controller_kind,
-                  controller_name      = @controller_name,
-                  request_cpu_cores    = @request_cpu_cores,
-                  request_memory_bytes = @request_memory_bytes,
-                  created_at           = @created_at,
-                  deleted_at           = @deleted_at,
-                  started_at           = @started_at
-`
-	_, err := q.exec(ctx, upsertPod, arg)
-	return err
-}
-
-type UpsertJobParams struct {
-	JobUid         pgtype.UUID        `db:"job_uid"`
-	Name           string             `db:"name"`
-	Namespace      string             `db:"namespace"`
-	Labels         []byte             `db:"labels"`
-	Annotations    []byte             `db:"annotations"`
-	ControllerUid  pgtype.UUID        `db:"controller_uid"`
-	ControllerKind string             `db:"controller_kind"`
-	ControllerName string             `db:"controller_name"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at"`
-	DeletedAt      pgtype.Timestamptz `db:"deleted_at"`
-}
-
-func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) error {
-	const upsertJob = `
-insert into job(job_uid, name, namespace, labels, annotations, controller_uid, controller_kind, controller_name,
-                created_at,
-                deleted_at)
-values (@job_uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @created_at, @deleted_at)
-on conflict (job_uid)
-    do update set name            = @name,
-                  namespace       = @namespace,
-                  labels          = @labels,
-                  annotations     = @annotations,
-                  controller_uid  = @controller_uid,
-                  controller_kind = @controller_kind,
-                  controller_name = @controller_name,
-                  created_at      = @created_at,
-                  deleted_at      = @deleted_at
-`
-	_, err := q.exec(ctx, upsertJob, arg)
-	return err
-}
-
-type UpsertReplicaSetParams struct {
-	ReplicaSetUid  pgtype.UUID        `db:"replica_set_uid"`
-	Name           string             `db:"name"`
-	Namespace      string             `db:"namespace"`
-	Labels         []byte             `db:"labels"`
-	Annotations    []byte             `db:"annotations"`
-	ControllerUid  pgtype.UUID        `db:"controller_uid"`
-	ControllerKind string             `db:"controller_kind"`
-	ControllerName string             `db:"controller_name"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at"`
-	DeletedAt      pgtype.Timestamptz `db:"deleted_at"`
-}
-
-func (q *Queries) UpsertReplicaSet(ctx context.Context, arg UpsertReplicaSetParams) error {
-	const upsertReplicaSet = `
-    insert into replica_set (replica_set_uid, name, namespace, labels, annotations, controller_uid, controller_kind,
-                             controller_name, created_at, deleted_at)
-    values (@replica_set_uid, @name, @namespace, @labels, @annotations, @controller_uid, @controller_kind, @controller_name, @created_at, @deleted_at)
-    on conflict (replica_set_uid)
-        do update set name            = @name,
-                      namespace       = @namespace,
-                      labels          = @labels,
-                      annotations     = @annotations,
-                      controller_uid  = @controller_uid,
-                      controller_kind = @controller_kind,
-                      controller_name = @controller_name,
-                      created_at      = @created_at,
-                      deleted_at      = @deleted_at
-    `
-
-	_, err := q.exec(ctx, upsertReplicaSet, arg)
-	return err
 }
 
 type UpsertPodUsedCPUParams struct {

@@ -1,52 +1,16 @@
-create table pod
+create table object
 (
-    pod_uid              uuid primary key,
-    namespace            text                     not null,
-    name                 text                     not null,
-    node_name            text                     not null,
-    created_at           timestamp with time zone not null default current_timestamp,
-    started_at           timestamp with time zone not null default current_timestamp,
-    deleted_at           timestamp with time zone null,
-    request_cpu_cores    double precision         not null default 0,
-    request_memory_bytes double precision         not null default 0,
-    controller_kind      text                     not null default '',
-    controller_name      text                     not null default '',
-    controller_uid       uuid null,
-    labels               jsonb                    not null default '{}',
-    annotations          jsonb                    not null default '{}'
-);
-
-create table replica_set
-(
-    replica_set_uid uuid primary key,
-    namespace       text                     not null,
-    name            text                     not null,
-    controller_kind text                     not null default '',
-    controller_name text                     not null default '',
-    controller_uid  uuid null,
-    created_at      timestamp with time zone not null default current_timestamp,
-    deleted_at      timestamp with time zone null,
-    labels          jsonb                    not null default '{}',
-    annotations     jsonb                    not null default '{}'
-);
-
-create table job
-(
-    job_uid         uuid primary key,
-    namespace       text                     not null,
-    name            text                     not null,
-    controller_kind text                     not null default '',
-    controller_name text                     not null default '',
-    controller_uid  uuid null,
-    created_at      timestamp with time zone not null default current_timestamp,
-    deleted_at      timestamp with time zone null,
-    labels          jsonb                    not null default '{}',
-    annotations     jsonb                    not null default '{}'
+    kind       text  not null,
+    uid        uuid  primary key,
+    metadata   jsonb not null default '{}',
+    spec       jsonb not null default '{}',
+    status     jsonb not null default '{}',
+    deleted_at timestamp with time zone
 );
 
 create table pod_usage_hourly
 (
-    pod_uid                     uuid not null ,
+    pod_uid                     uuid                     not null,
     timestamp                   timestamp with time zone not null,
     memory_bytes_max            double precision         not null default 0,
     memory_bytes_min            double precision         not null default 0,
@@ -81,17 +45,86 @@ create table config
 insert into config (default_price_cpu_core_hour, default_price_memory_gb_hour)
 values (0.031611, 0.004237);
 
-create view pod_controller as
-select pod.pod_uid,
-       pod.name,
-       pod.namespace,
-       coalesce(replica_set.controller_uid, job.controller_uid, pod.controller_uid)    as controller_uid,
-       coalesce(replica_set.controller_kind, job.controller_kind, pod.controller_kind) as controller_kind,
-       coalesce(replica_set.controller_name, job.controller_name, pod.controller_name) as controller_name
-from pod
-         left join replica_set
-                   on pod.controller_kind = 'ReplicaSet' and pod.controller_uid = replica_set.replica_set_uid
-         left join job on pod.controller_kind = 'Job' and pod.controller_uid = job.job_uid;
+
+create view object_controller as
+with controller as (select uid,
+                           owner_ref ->> 'kind' as controller_kind,
+                           owner_ref ->> 'name' as controller_name,
+                           (owner_ref ->> 'uid') ::uuid as controller_uid
+                    from (select uid, jsonb_array_elements(metadata -> 'ownerReferences') as owner_ref
+                          from object) owners
+                    where owner_ref ->> 'controller' = 'true')
+select controller.uid,
+       coalesce(controller_controller.controller_kind, controller.controller_kind) as controller_kind,
+       coalesce(controller_controller.controller_name, controller.controller_name) as controller_name,
+       coalesce(controller_controller.controller_uid, controller.controller_uid)   as controller_uid
+from controller
+         left join controller controller_controller on controller.controller_uid = controller_controller.uid;
+
+
+create or replace function convert_memory_to_bytes(input varchar) returns bigint as
+$$
+declare
+    num_part  bigint;
+    unit_part varchar;
+    result    bigint;
+begin
+    -- Extract numeric part
+    num_part := substring(input from '^[0-9]+')::BIGINT;
+    -- Extract unit part
+    unit_part := substring(input from '[a-zA-Z]+$');
+    -- Calculate bytes based on unit
+case unit_part when 'E' then result := num_part * 1000000000000000000;
+when 'P' then result := num_part * 1000000000000000;
+when 'T' then result := num_part * 1000000000000;
+when 'G' then result := num_part * 1000000000;
+when 'M' then result := num_part * 1000000;
+when 'K' then result := num_part * 1000;
+when 'Ei' then result := num_part * 1024 ^ 6;
+when 'Pi' then result := num_part * 1024 ^ 5;
+when 'Ti' then result := num_part * 1024 ^ 4;
+when 'Gi' then result := num_part * 1024 ^ 3;
+when 'Mi' then result := num_part * 1024 ^ 2;
+when 'Ki' then result := num_part * 1024;
+else result := num_part; -- Assuming no suffix means bytes
+end case;
+
+return result;
+end;
+$$ language plpgsql;
+
+
+create or replace function convert_cpu_to_cores(input varchar) returns numeric as
+$$
+declare
+num_part     numeric;
+    is_millicore boolean;
+begin
+    -- Check if input is in millicores
+    is_millicore := input like '%m';
+    -- Extract numeric part
+    if is_millicore then num_part := substring(input from '^[0-9]+')::numeric; else num_part := input::numeric; end if;
+    -- Convert millicores to cores if necessary
+    if is_millicore then return num_part / 1000; else return num_part; end if;
+end;
+$$ language plpgsql;
+
+
+create view pod as
+select
+    metadata ->> 'name' as name,
+    uid,
+    metadata ->> 'namespace' as namespace,
+    (status ->> 'starttime'):: timestamp as start_time,
+    spec ->> 'nodeName' as node_name,
+    metadata -> 'labels' as labels,
+    metadata -> 'annotations' as annotations,
+    deleted_at:: timestamp,
+    coalesce((select sum (convert_cpu_to_cores(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.cpu') as value), 0) as request_cpu_cores,
+    coalesce((select sum (convert_memory_to_bytes(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.memory') as value), 0) as request_memory_bytes
+from object
+where kind = 'Pod';
+
 
 create view cost_pod_hourly as
 select *,
@@ -101,34 +134,10 @@ select *,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
        pod_hours as cpu_cost
-from (select timestamp, pod.pod_uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.created_at, pod.started_at, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, pod_controller.controller_uid, pod_controller.controller_kind, pod_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
+from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
           least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
-          greatest(pod_usage_hourly.timestamp, pod.started_at)) / 3600 as pod_hours
+          greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600 as pod_hours
       from pod_usage_hourly
-          inner join pod using (pod_uid)
-          inner join pod_controller using (pod_uid)) pod_usage;
-
-
-
-create view cost_workload_daily as
-select date_trunc('day', timestamp) as timestamp,
-       namespace,
-       controller_kind,
-       controller_name,
-       sum(memory_bytes_avg * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as memory_bytes_avg,
-       max(memory_bytes_max)        as memory_bytes_max,
-       sum(request_memory_bytes * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as request_memory_bytes_avg,
-       sum(cpu_cores_avg * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as cpu_cores_avg,
-       max(cpu_cores_max)           as cpu_cores_max,
-       sum(request_cpu_cores * cost_pod_hourly.pod_hours) /
-       sum(pod_hours)               as request_cpu_cores_avg,
-       sum(pod_hours)               as pod_hours,
-       sum(memory_cost)             as memory_cost,
-       sum(cpu_cost)                as cpu_cost,
-       sum(memory_cost + cpu_cost)  as total_cost
-from cost_pod_hourly
-group by 1, namespace, controller_kind, controller_name
-order by timestamp asc, total_cost desc;
+          inner join pod on (pod_usage_hourly.pod_uid = pod.uid)
+          inner join object_controller
+      on (pod_uid = object_controller.uid::uuid)) pod_usage;

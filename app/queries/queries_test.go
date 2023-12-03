@@ -2,17 +2,34 @@ package queries
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/lmittmann/tint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/term"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/r2k1/pgkube/app/test"
 )
+
+func init() {
+	w := os.Stderr
+	logger := slog.New(
+		tint.NewHandler(w, &tint.Options{
+			NoColor: !term.IsTerminal(int(w.Fd())),
+			Level:   slog.LevelDebug,
+		}),
+	)
+	slog.SetDefault(logger)
+}
 
 func TestWorkloadAgg(t *testing.T) {
 	queries := NewTestQueries(t)
@@ -56,95 +73,21 @@ func TestStructToMap(t *testing.T) {
 	// Additional test cases can be added here
 }
 
-func TestUpsertPod(t *testing.T) {
+func TestUpsertObject(t *testing.T) {
 	queries := NewTestQueries(t)
-
-	params := UpsertPodParams{
-		PodUid:             RandomUUID(),
-		Name:               "test-pod",
-		Namespace:          "test-namespace",
-		NodeName:           "test-node",
-		Labels:             []byte(`{"label1":"value1"}`),
-		Annotations:        []byte(`{"annotation1":"value1"}`),
-		ControllerUid:      RandomUUID(),
-		ControllerKind:     "Deployment",
-		ControllerName:     "test-controller",
-		RequestCpuCores:    1.0,
-		RequestMemoryBytes: 1.0,
-		CreatedAt:          pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:          pgtype.Timestamptz{},
-		StartedAt:          pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	params := Object{
+		Metadata: metav1.ObjectMeta{
+			UID: NewKUUID(),
+		},
+		Spec: map[string]interface{}{
+			"test": "test",
+		},
+		Status: map[string]interface{}{
+			"test": "test",
+		},
 	}
-
-	err := queries.UpsertPod(context.TODO(), params)
+	err := queries.UpsertObject(context.TODO(), params)
 	require.NoError(t, err)
-
-	err = queries.UpsertPod(context.TODO(), params)
-	require.NoError(t, err)
-}
-
-func TestUpsertJob(t *testing.T) {
-	queries := NewTestQueries(t)
-
-	params := UpsertJobParams{
-		JobUid:         RandomUUID(),
-		Name:           "test-job",
-		Namespace:      "test-namespace",
-		Labels:         []byte(`{"label1":"value1"}`),
-		Annotations:    []byte(`{"annotation1":"value1"}`),
-		ControllerUid:  RandomUUID(),
-		ControllerKind: "Deployment",
-		ControllerName: "test-controller",
-		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:      pgtype.Timestamptz{},
-	}
-
-	// Happy path
-	err := queries.UpsertJob(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test idempotency
-	err = queries.UpsertJob(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test with missing required fields
-	params = UpsertJobParams{
-		JobUid: RandomUUID(),
-	}
-	err = queries.UpsertJob(context.TODO(), params)
-	require.Error(t, err)
-}
-
-func TestUpsertReplicaSet(t *testing.T) {
-	queries := NewTestQueries(t)
-
-	params := UpsertReplicaSetParams{
-		ReplicaSetUid:  RandomUUID(),
-		Name:           "test-replicaset",
-		Namespace:      "test-namespace",
-		Labels:         []byte(`{"label1":"value1"}`),
-		Annotations:    []byte(`{"annotation1":"value1"}`),
-		ControllerUid:  RandomUUID(),
-		ControllerKind: "Deployment",
-		ControllerName: "test-controller",
-		CreatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
-		DeletedAt:      pgtype.Timestamptz{},
-	}
-
-	// Happy path
-	err := queries.UpsertReplicaSet(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test idempotency
-	err = queries.UpsertReplicaSet(context.TODO(), params)
-	require.NoError(t, err)
-
-	// Test with missing required fields
-	params = UpsertReplicaSetParams{
-		ReplicaSetUid: RandomUUID(),
-	}
-	err = queries.UpsertReplicaSet(context.TODO(), params)
-	require.Error(t, err)
 }
 
 func TestUpsertPodUsedCPU(t *testing.T) {
@@ -152,12 +95,12 @@ func TestUpsertPodUsedCPU(t *testing.T) {
 
 	params := []UpsertPodUsedCPUParams{
 		{
-			PodUid:    RandomUUID(),
+			PodUid:    NewUUID(),
 			Timestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			CpuCores:  1.0,
 		},
 		{
-			PodUid:    RandomUUID(),
+			PodUid:    NewUUID(),
 			Timestamp: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			CpuCores:  2.0,
 		},
@@ -177,12 +120,12 @@ func TestUpsertPodUsedMemory(t *testing.T) {
 
 	params := []UpsertPodUsedMemoryParams{
 		{
-			PodUid:      RandomUUID(),
+			PodUid:      NewUUID(),
 			Timestamp:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			MemoryBytes: 1024.0,
 		},
 		{
-			PodUid:      RandomUUID(),
+			PodUid:      NewUUID(),
 			Timestamp:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			MemoryBytes: 2048.0,
 		},
@@ -208,11 +151,14 @@ func NewTestQueries(t *testing.T) *Queries {
 	return New(db)
 }
 
-func RandomUUID() pgtype.UUID {
-	uuid := uuid.NewUUID()
-	pguuid, err := parsePGUUID(uuid)
+func NewUUID() pgtype.UUID {
+	pguuid, err := parsePGUUID(NewKUUID())
 	if err != nil {
 		panic(err)
 	}
 	return pguuid
+}
+
+func NewKUUID() types.UID {
+	return uuid.NewUUID()
 }

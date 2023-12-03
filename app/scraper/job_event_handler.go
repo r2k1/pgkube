@@ -30,7 +30,14 @@ func (h *JobEventHandler) OnUpdate(oldObj, newObj interface{}) {
 }
 
 func (h *JobEventHandler) OnDelete(obj interface{}) {
-	h.tryUpsertJob(obj)
+	job, ok := obj.(*v1.Job)
+	if !ok {
+		slog.Error("deleting job", "error", fmt.Errorf("expected *v1.Job, got %T", obj))
+		return
+	}
+	if err := h.queries.DeleteObject(context.Background(), string(job.GetUID())); err != nil {
+		slog.Error("deleting job", "error", err)
+	}
 }
 
 func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
@@ -39,44 +46,16 @@ func (h *JobEventHandler) tryUpsertJob(obj interface{}) {
 		slog.Error("upserting job", "error", fmt.Errorf("expected *v1.Job, got %T", obj))
 		return
 	}
-	if err := h.upsertJob(job); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), jobToObject(job)); err != nil {
 		slog.Error("upserting job", "error", err)
 	}
 }
 
-func (h *JobEventHandler) upsertJob(obj *v1.Job) error {
-	slog.Debug("upserting job", "namespace", obj.Namespace, "job", obj.Name)
-	uid, err := parsePGUUID(obj.UID)
-	if err != nil {
-		return err
+func jobToObject(job *v1.Job) queries.Object {
+	return queries.Object{
+		Kind:     "Job",
+		Metadata: job.ObjectMeta,
+		Spec:     job.Spec,
+		Status:   job.Status,
 	}
-	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
-
-	labels, err := marshalLabels(obj.Labels)
-	if err != nil {
-		return fmt.Errorf("majobhaling labels: %w", err)
-	}
-
-	annotations, err := marshalLabels(obj.Annotations)
-	if err != nil {
-		return fmt.Errorf("majobhaling annotations: %w", err)
-	}
-
-	queryParams := queries.UpsertJobParams{
-		JobUid:         uid,
-		Namespace:      obj.Namespace,
-		Name:           obj.Name,
-		ControllerKind: controllerKind,
-		ControllerName: controllerName,
-		ControllerUid:  controllerUid,
-		CreatedAt:      toPGTime(obj.CreationTimestamp),
-		DeletedAt:      ptrToPGTime(obj.DeletionTimestamp),
-		Labels:         labels,
-		Annotations:    annotations,
-	}
-
-	if err := h.queries.UpsertJob(context.Background(), queryParams); err != nil {
-		return fmt.Errorf("upserting job set: %w", err)
-	}
-	return nil
 }

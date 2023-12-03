@@ -30,6 +30,14 @@ func (h *ReplicaSetEventHandler) OnUpdate(oldObj, newObj interface{}) {
 }
 
 func (h *ReplicaSetEventHandler) OnDelete(obj interface{}) {
+	rs, ok := obj.(*v1.ReplicaSet)
+	if !ok {
+		slog.Error("deleting ReplicaSet", "error", fmt.Errorf("expected *v1.ReplicaSet, got %T", obj))
+		return
+	}
+	if err := h.queries.DeleteObject(context.Background(), string(rs.GetUID())); err != nil {
+		slog.Error("deleting ReplicaSet", "error", err)
+	}
 	h.tryUpsertReplicaSet(obj)
 }
 
@@ -39,44 +47,16 @@ func (h *ReplicaSetEventHandler) tryUpsertReplicaSet(obj interface{}) {
 		slog.Error("upserting replica set", "error", fmt.Errorf("expected *v1.ReplicaSet, got %T", obj))
 		return
 	}
-	if err := h.upsertReplicaSet(rs); err != nil {
+	if err := h.queries.UpsertObject(context.Background(), replicaSetToObject(rs)); err != nil {
 		slog.Error("upserting replica set", "error", err)
 	}
 }
 
-func (h *ReplicaSetEventHandler) upsertReplicaSet(obj *v1.ReplicaSet) error {
-	slog.Debug("upserting replica set", "namespace", obj.Namespace, "replica_set", obj.Name)
-	uid, err := parsePGUUID(obj.UID)
-	if err != nil {
-		return err
+func replicaSetToObject(rs *v1.ReplicaSet) queries.Object {
+	return queries.Object{
+		Kind:     "ReplicaSet",
+		Metadata: rs.ObjectMeta,
+		Spec:     rs.Spec,
+		Status:   rs.Status,
 	}
-	controllerUid, controllerKind, controllerName := controller(obj.OwnerReferences)
-
-	labels, err := marshalLabels(obj.Labels)
-	if err != nil {
-		return fmt.Errorf("marshaling labels: %w", err)
-	}
-
-	annotations, err := marshalLabels(obj.Annotations)
-	if err != nil {
-		return fmt.Errorf("marshaling annotations: %w", err)
-	}
-
-	queryParams := queries.UpsertReplicaSetParams{
-		ReplicaSetUid:  uid,
-		Namespace:      obj.Namespace,
-		Name:           obj.Name,
-		ControllerKind: controllerKind,
-		ControllerName: controllerName,
-		ControllerUid:  controllerUid,
-		CreatedAt:      toPGTime(obj.CreationTimestamp),
-		DeletedAt:      ptrToPGTime(obj.DeletionTimestamp),
-		Labels:         labels,
-		Annotations:    annotations,
-	}
-
-	if err := h.queries.UpsertReplicaSet(context.Background(), queryParams); err != nil {
-		return fmt.Errorf("upserting replica set: %w", err)
-	}
-	return nil
 }
