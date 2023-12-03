@@ -74,20 +74,14 @@ func TestStructToMap(t *testing.T) {
 	// Additional test cases can be added here
 }
 
-func TestUpsertObject(t *testing.T) {
+func TestUpsertPod(t *testing.T) {
 	queries := NewTestQueries(t)
-	params := Object{
-		Metadata: metav1.ObjectMeta{
+	params := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
 			UID: NewKUUID(),
 		},
-		Spec: map[string]interface{}{
-			"test": "test",
-		},
-		Status: map[string]interface{}{
-			"test": "test",
-		},
 	}
-	err := queries.UpsertObject(context.TODO(), params)
+	err := queries.UpsertObject(context.TODO(), "Pod", params)
 	require.NoError(t, err)
 }
 
@@ -150,13 +144,10 @@ func TestDeleteObjects(t *testing.T) {
 	queries := NewTestQueries(t)
 	createPod := func() pgtype.UUID {
 		uid := NewKUUID()
-		err := queries.UpsertObject(context.TODO(), Object{
-			Kind: "Pod",
-			Metadata: metav1.ObjectMeta{
+		err := queries.UpsertObject(context.TODO(), "Pod", &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
 				UID: uid,
 			},
-			Spec:   metav1.ObjectMeta{},
-			Status: v1.PodStatus{},
 		})
 		require.NoError(t, err)
 		puid, err := parsePGUUID(uid)

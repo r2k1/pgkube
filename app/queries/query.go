@@ -2,30 +2,56 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-type Object struct {
-	Kind     string             `db:"kind"`
-	Uid      pgtype.UUID        `db:"uid"`
-	Metadata metav1.ObjectMeta  `db:"metadata"`
-	Spec     any                `db:"spec"`
-	Status   any                `db:"status"`
-	LastSeen pgtype.Timestamptz `db:"last_seen"`
-}
-
-func (q *Queries) UpsertObject(ctx context.Context, object Object) error {
-	var err error
-	object.Uid, err = parsePGUUID(object.Metadata.UID)
-	if err != nil {
-		return fmt.Errorf("parsing object UID: %w", err)
+func (q *Queries) UpsertObject(ctx context.Context, kind string, object any) error {
+	type UpsertObject struct {
+		Kind     any `db:"kind"`
+		Uid      any `db:"uid"`
+		Metadata any `db:"metadata"`
+		Spec     any `db:"spec"`
+		Status   any `db:"status"`
 	}
-	object.Metadata.ManagedFields = nil // this field is noisy and not useful for most cases
+
+	type uidGetterI interface {
+		GetUID() types.UID
+	}
+
+	uidGetter, ok := object.(uidGetterI)
+	if !ok {
+		return fmt.Errorf("object doest have GetUID() method: %T", object)
+	}
+
+	data, err := json.Marshal(object)
+	if err != nil {
+		return err
+	}
+	type k8sObject struct {
+		Metadata json.RawMessage `json:"metadata"`
+		Spec     json.RawMessage `json:"spec"`
+		Status   json.RawMessage `json:"status"`
+	}
+	var newObj k8sObject
+	err = json.Unmarshal(data, &newObj)
+	if err != nil {
+		return err
+	}
+
+	uo := UpsertObject{
+		Kind:     kind,
+		Uid:      uidGetter.GetUID(),
+		Metadata: newObj.Metadata,
+		Spec:     newObj.Spec,
+		Status:   newObj.Status,
+	}
+
 	const upsertObject = `
 insert into object (kind, uid, metadata, spec, status)
 values (@kind, @uid, @metadata, @spec, @status)
@@ -35,11 +61,11 @@ on conflict (uid)
                   spec        = @spec,
                   status      = @status
 `
-	_, err = q.execStruct(ctx, upsertObject, object)
+	_, err = q.execStruct(ctx, upsertObject, uo)
 	if err != nil {
 		return err
 	}
-	slog.Debug("upserted object", "kind", object.Kind, "namespace", object.Metadata.Namespace, "name", object.Metadata.Name, "uid", object.Metadata.UID)
+	slog.Debug("upserted object", "kind", kind, "uid", uo.Uid)
 	return nil
 }
 
