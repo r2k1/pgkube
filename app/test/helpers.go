@@ -38,7 +38,7 @@ func MustStartPostgresContainer(t *testing.T, ctx context.Context) testcontainer
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        "postgres:15-alpine",
 			ExposedPorts: []string{"5432/tcp"},
-			WaitingFor:   wait.ForListeningPort("5432/tcp"),
+			WaitingFor:   wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5 * time.Second),
 			Env: map[string]string{
 				"POSTGRES_USER":     postgresUser,
 				"POSTGRES_PASSWORD": postgresPassword,
@@ -84,7 +84,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 
 	// nolint:gosec
 	testDBName := "db_" + strconv.Itoa(rand.Intn(10000000))
-	createDBQuery := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", testDBName, postgresDBName)
+	createDBQuery := fmt.Sprintf("create database %s template %s", testDBName, postgresDBName)
 	mainDBLock.Lock()
 	_, err := mainConn.Exec(ctx, createDBQuery)
 	mainDBLock.Unlock()
@@ -100,7 +100,7 @@ func CreateTestDB(t *testing.T, migrationsPath string) *pgx.Conn {
 
 		_ = testConn.Close(ctx)
 		mainDBLock.Lock()
-		_, err := mainConn.Exec(ctx, "DROP DATABASE "+testDBName)
+		_, err := mainConn.Exec(ctx, "drop database "+testDBName)
 		mainDBLock.Unlock()
 		require.NoError(t, err)
 	})
