@@ -22,9 +22,6 @@ kubectl apply -f postgres.yaml
 kubectl apply -f pgkube.yaml
 ```
 
-### Schema
-For detailed information on the data structure stored in the PostgreSQL database, refer to the [schema](schema.md) documentation.
-
 ### Usage
 
 To query the data stored by pgkube, you can use your preferred PostgreSQL querying tool. As an example, to retrieve the total cost of all workloads in a specific namespace:
