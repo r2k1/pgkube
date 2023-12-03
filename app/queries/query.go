@@ -45,10 +45,35 @@ on conflict (uid)
 
 func (q *Queries) DeleteObject(ctx context.Context, uid string) error {
 	const deleteObject = `
-update object set deleted_at = now() where metadata ->> 'uid' = $1 and deleted_at is null 
+update object set deleted_at = now() where uid = $1 and deleted_at is null 
 `
 	_, err := q.db.Exec(ctx, deleteObject, uid)
 	return err
+}
+
+func (q *Queries) DeleteObjects(ctx context.Context, kind string, ignoreUids []pgtype.UUID) (int, error) {
+	const deleteObject = `
+with updated as ( 
+	update object set deleted_at = now() where uid != all($1) and deleted_at is null and kind = $2 returning *
+)
+select count(*) from updated 
+`
+	var count int
+	err := q.db.QueryRow(ctx, deleteObject, ignoreUids, kind).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to scan count: %w", err)
+	}
+	return count, nil
+}
+
+func (q *Queries) ActiveObjectCount(ctx context.Context) (int, error) {
+	const countObjects = `select count(*) from object where deleted_at is null`
+	var count int
+	err := q.db.QueryRow(ctx, countObjects).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to scan count: %w", err)
+	}
+	return count, nil
 }
 
 type PodUsageHourly struct {

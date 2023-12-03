@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
@@ -44,6 +47,7 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 	slog.Info("starting scraper")
 	factory.Start(ctx.Done())
 	factory.WaitForCacheSync(ctx.Done())
+	go StartGarbageCollector(ctx, queries, factory)
 	return nil
 }
 
@@ -69,4 +73,70 @@ func WithTransaction(ctx context.Context, conn *pgx.Conn, f func(tx pgx.Tx) erro
 		return fmt.Errorf("committing transaction: %w", err)
 	}
 	return nil
+}
+
+func StartGarbageCollector(ctx context.Context, queries *queries.Queries, factory informers.SharedInformerFactory) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+
+	factory.WaitForCacheSync(ctx.Done())
+	// Trigger the first tick immediately
+	if err := CollectGarbage(ctx, queries, factory); err != nil {
+		slog.Error("cleaning up objects", "error", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := CollectGarbage(ctx, queries, factory); err != nil {
+				slog.Error("cleaning up objects", "error", err)
+			}
+		}
+	}
+}
+
+func CollectGarbage(ctx context.Context, queries *queries.Queries, factory informers.SharedInformerFactory) error {
+	pods, err := factory.Core().V1().Pods().Lister().List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("listing pods: %w", err)
+	}
+	if err := deleteObjects(ctx, queries, "Pod", pods); err != nil {
+		return err
+	}
+	rs, err := factory.Apps().V1().ReplicaSets().Lister().List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("listing replica sets: %w", err)
+	}
+	if err := deleteObjects(ctx, queries, "ReplicaSet", rs); err != nil {
+		return err
+	}
+	jobs, err := factory.Batch().V1().Jobs().Lister().List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("listing jobs: %w", err)
+	}
+	if err := deleteObjects(ctx, queries, "Job", jobs); err != nil {
+		return err
+	}
+	slog.Debug("garbage collection done")
+	return nil
+}
+
+func deleteObjects[T v1.Object](ctx context.Context, queries *queries.Queries, kind string, objectsToIgnore []T) error {
+	uids := make([]pgtype.UUID, 0, len(objectsToIgnore))
+	for _, pod := range objectsToIgnore {
+		uid, err := parsePGUUID(pod.GetUID())
+		if err != nil {
+			slog.Error("parsing pod uuid", "error", err)
+			continue
+		}
+		uids = append(uids, uid)
+	}
+	count, err := queries.DeleteObjects(ctx, kind, uids)
+	if err != nil {
+		return fmt.Errorf("listing pods: %w", err)
+	}
+	slog.Info("cleaned objects", kind, count)
+	return err
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/term"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -143,7 +144,41 @@ func TestUpsertPodUsedMemory(t *testing.T) {
 func TestListPodUsageHourly(t *testing.T) {
 	_, err := NewTestQueries(t).ListPodUsageHourly(context.TODO())
 	require.NoError(t, err)
+}
 
+func TestDeleteObjects(t *testing.T) {
+	queries := NewTestQueries(t)
+	createPod := func() pgtype.UUID {
+		uid := NewKUUID()
+		err := queries.UpsertObject(context.TODO(), Object{
+			Kind: "Pod",
+			Metadata: metav1.ObjectMeta{
+				UID: uid,
+			},
+			Spec:   metav1.ObjectMeta{},
+			Status: v1.PodStatus{},
+		})
+		require.NoError(t, err)
+		puid, err := parsePGUUID(uid)
+		require.NoError(t, err)
+		return puid
+	}
+
+	requireObjectCount := func(expectedCount int) {
+		count, err := queries.ActiveObjectCount(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, expectedCount, count)
+	}
+
+	requireObjectCount(0)
+	pod1 := createPod()
+	pod2 := createPod()
+	createPod()
+	requireObjectCount(3)
+	deletedCount, err := queries.DeleteObjects(context.TODO(), "Pod", []pgtype.UUID{pod1, pod2})
+	require.NoError(t, err)
+	require.Equal(t, 1, deletedCount)
+	requireObjectCount(2)
 }
 
 func NewTestQueries(t *testing.T) *Queries {
