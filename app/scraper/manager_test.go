@@ -62,9 +62,10 @@ func TestManager_MultipleTargets(t *testing.T) {
 	m.AddTarget("test2", mockScrapeFunc(ch2), time.Millisecond*60)
 	m.AddTarget("test3", mockScrapeFunc(ch3), time.Millisecond*70)
 
+	// double the interval to compensate for the initial randomized delay
 	assert.Eventually(t, func() bool { return <-ch1 }, time.Millisecond*100, time.Millisecond*10)
-	assert.Eventually(t, func() bool { return <-ch2 }, time.Millisecond*110, time.Millisecond*10)
-	assert.Eventually(t, func() bool { return <-ch3 }, time.Millisecond*120, time.Millisecond*10)
+	assert.Eventually(t, func() bool { return <-ch2 }, time.Millisecond*120, time.Millisecond*10)
+	assert.Eventually(t, func() bool { return <-ch3 }, time.Millisecond*140, time.Millisecond*10)
 
 	// Test removing a target and ensuring it doesn't scrape again
 	m.RemoveTarget("test2")

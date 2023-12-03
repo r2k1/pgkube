@@ -19,7 +19,7 @@ import (
 
 const resyncInterval = time.Hour
 
-func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kubernetes.Clientset, interval time.Duration, cache *Cache) error {
+func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kubernetes.Clientset, interval time.Duration) error {
 	factory := informers.NewSharedInformerFactory(clientSet, resyncInterval)
 
 	rsHandler := NewPersistObjectHandler(queries, "ReplicaSet")
@@ -32,11 +32,6 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 		return fmt.Errorf("adding pod event handler: %w", err)
 	}
 
-	podCacheHandler := NewPodEventHandler(queries, cache)
-	if _, err := factory.Core().V1().Pods().Informer().AddEventHandlerWithResyncPeriod(podCacheHandler, resyncInterval); err != nil {
-		return fmt.Errorf("adding pod event handler: %w", err)
-	}
-
 	jobHandler := NewPersistObjectHandler(queries, "Job")
 	if _, err := factory.Batch().V1().Jobs().Informer().AddEventHandlerWithResyncPeriod(jobHandler, resyncInterval); err != nil {
 		return fmt.Errorf("adding job event handler: %w", err)
@@ -44,6 +39,7 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 
 	manager := NewManager(ctx)
 
+	cache := NewPodCacheK8s(factory.Core().V1().Pods().Lister())
 	nodeHandler := NewNodeEventHandler(manager, k8s.NewClient(clientSet), queries, interval, cache)
 	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandlerWithResyncPeriod(nodeHandler, resyncInterval); err != nil {
 		return fmt.Errorf("adding node event handler: %w", err)

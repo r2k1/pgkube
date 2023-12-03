@@ -93,9 +93,7 @@ func Execute(ctx context.Context) error {
 		return err
 	}
 
-	cache := scraper.NewCache()
-
-	err = scraper.StartScraper(ctx, queries, clientset, time.Minute, cache)
+	err = scraper.StartScraper(ctx, queries, clientset, time.Minute)
 	if err != nil {
 		return err
 	}
