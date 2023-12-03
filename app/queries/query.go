@@ -12,27 +12,34 @@ import (
 
 type Object struct {
 	Kind     string             `db:"kind"`
+	Uid      pgtype.UUID        `db:"uid"`
 	Metadata metav1.ObjectMeta  `db:"metadata"`
 	Spec     any                `db:"spec"`
 	Status   any                `db:"status"`
 	LastSeen pgtype.Timestamptz `db:"last_seen"`
 }
 
-func (q *Queries) UpsertObject(ctx context.Context, arg Object) error {
+func (q *Queries) UpsertObject(ctx context.Context, object Object) error {
+	var err error
+	object.Uid, err = parsePGUUID(object.Metadata.UID)
+	if err != nil {
+		return fmt.Errorf("parsing object UID: %w", err)
+	}
+	object.Metadata.ManagedFields = nil // this field is noisy and not useful for most cases
 	const upsertObject = `
-insert into object (kind, metadata, spec, status)
-values (@kind, @metadata, @spec, @status)
-on conflict (((metadata ->> 'uid')::uuid))
+insert into object (kind, uid, metadata, spec, status)
+values (@kind, @uid, @metadata, @spec, @status)
+on conflict (uid)
     do update set kind        = @kind,
                   metadata    = @metadata,
                   spec        = @spec,
                   status      = @status
 `
-	_, err := q.execStruct(ctx, upsertObject, arg)
+	_, err = q.execStruct(ctx, upsertObject, object)
 	if err != nil {
 		return err
 	}
-	slog.Debug("upserted object", "kind", arg.Kind, "namespace", arg.Metadata.Namespace, "name", arg.Metadata.Name, "uid", arg.Metadata.UID)
+	slog.Debug("upserted object", "kind", object.Kind, "namespace", object.Metadata.Namespace, "name", object.Metadata.Name, "uid", object.Metadata.UID)
 	return nil
 }
 

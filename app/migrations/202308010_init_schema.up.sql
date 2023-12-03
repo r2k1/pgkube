@@ -1,13 +1,12 @@
 create table object
 (
     kind       text  not null,
+    uid        uuid  primary key,
     metadata   jsonb not null default '{}',
     spec       jsonb not null default '{}',
     status     jsonb not null default '{}',
     deleted_at timestamp with time zone
 );
-
-create unique index idx_unique_metadata_uid on object (((metadata ->> 'uid')::uuid));
 
 create table pod_usage_hourly
 (
@@ -48,19 +47,19 @@ values (0.031611, 0.004237);
 
 
 create view object_controller as
-with controller as (select object_uid,
+with controller as (select uid,
                            owner_ref ->> 'kind' as controller_kind,
                            owner_ref ->> 'name' as controller_name,
                            (owner_ref ->> 'uid') ::uuid as controller_uid
-                    from (select (metadata ->> 'uid')::uuid                          as object_uid, jsonb_array_elements(metadata -> 'ownerReferences') as owner_ref
+                    from (select uid, jsonb_array_elements(metadata -> 'ownerReferences') as owner_ref
                           from object) owners
                     where owner_ref ->> 'controller' = 'true')
-select controller.object_uid,
+select controller.uid,
        coalesce(controller_controller.controller_kind, controller.controller_kind) as controller_kind,
        coalesce(controller_controller.controller_name, controller.controller_name) as controller_name,
        coalesce(controller_controller.controller_uid, controller.controller_uid)   as controller_uid
 from controller
-         left join controller controller_controller on controller.controller_uid = controller_controller.object_uid;
+         left join controller controller_controller on controller.controller_uid = controller_controller.uid;
 
 
 CREATE
@@ -140,7 +139,7 @@ LANGUAGE plpgsql;
 create view pod as
 select
     metadata ->> 'name' as pod_name,
-    (metadata ->> 'uid')::uuid as pod_uid,
+    uid as pod_uid,
     metadata ->> 'namespace' as namespace,
     (status ->> 'starttime'):: timestamp as start_time,
     spec ->> 'nodeName' as node_name,
@@ -167,4 +166,4 @@ from (select timestamp, pod.pod_uid, pod.namespace, pod.pod_name, pod.node_name,
       from pod_usage_hourly
           inner join pod using (pod_uid)
           inner join object_controller
-      on (pod_uid = object_controller.object_uid::uuid)) pod_usage;
+      on (pod_uid = object_controller.uid::uuid)) pod_usage;
