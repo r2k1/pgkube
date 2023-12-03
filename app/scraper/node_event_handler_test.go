@@ -8,11 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/r2k1/pgkube/app/k8s"
 )
+
+//go:generate moq -out pod_cache_moq_test.go . PodCache
 
 func TestNodeScraper_Scrape(t *testing.T) {
 	ctx := Context(t)
@@ -25,7 +29,7 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		scraper := NewNodeScrapper("test-node", client, queries, NewCache())
+		scraper := NewNodeScrapper("test-node", client, queries, &PodCacheMock{})
 
 		err := scraper.Scrape(ctx)
 		require.Error(t, err)
@@ -49,9 +53,18 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		cache := NewCache()
 		k8suid, pguuid := RandomUUID(t)
-		cache.StorePodUUID("test-namespace", "test-pod", k8suid)
+		cache := &PodCacheMock{
+			GetFunc: func(namespace string, name string) (*v1.Pod, error) {
+				return &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:       k8suid,
+						Namespace: "test-namespace",
+						Name:      "test-pod",
+					},
+				}, nil
+			},
+		}
 		scraper := NewNodeScrapper("test-node", client, queries, cache)
 
 		err := scraper.Scrape(ctx)
@@ -111,7 +124,11 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		cache := NewCache()
+		cache := &PodCacheMock{
+			GetFunc: func(namespace string, name string) (*v1.Pod, error) {
+				return nil, errors.New("pod not found")
+			},
+		}
 		scraper := NewNodeScrapper("test-node", client, queries, cache)
 
 		err := scraper.Scrape(ctx)
@@ -141,9 +158,19 @@ func TestNodeScraper_Scrape(t *testing.T) {
 			},
 		}
 		queries := Queries(t)
-		cache := NewCache()
 		k8suid, pguuid := RandomUUID(t)
-		cache.StorePodUUID("test-namespace", "test-pod", k8suid)
+		cache := &PodCacheMock{
+			GetFunc: func(namespace string, name string) (*v1.Pod, error) {
+				return &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:       k8suid,
+						Namespace: "test-namespace",
+						Name:      "test-pod",
+					},
+				}, nil
+			},
+		}
+
 		scraper := NewNodeScrapper("test-node", client, queries, cache)
 
 		err := scraper.Scrape(ctx)
