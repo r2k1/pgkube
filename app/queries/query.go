@@ -8,58 +8,41 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"k8s.io/apimachinery/pkg/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (q *Queries) UpsertObject(ctx context.Context, kind string, object any) error {
-	type UpsertObject struct {
-		Kind     any `db:"kind"`
-		Uid      any `db:"uid"`
-		Metadata any `db:"metadata"`
-		Spec     any `db:"spec"`
-		Status   any `db:"status"`
-	}
-
-	type uidGetterI interface {
-		GetUID() types.UID
-	}
-
-	uidGetter, ok := object.(uidGetterI)
+	objectGetter, ok := object.(metav1.Object)
 	if !ok {
-		return fmt.Errorf("object doest have GetUID() method: %T", object)
+		return fmt.Errorf("unexpected object type: %T", object)
 	}
 
 	data, err := json.Marshal(object)
 	if err != nil {
 		return fmt.Errorf("failed to marshal object: %w", err)
 	}
-	type k8sObject struct {
-		Metadata json.RawMessage `json:"metadata"`
-		Spec     json.RawMessage `json:"spec"`
-		Status   json.RawMessage `json:"status"`
-	}
-	var newObj k8sObject
-	err = json.Unmarshal(data, &newObj)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal object: %w", err)
-	}
-
-	uo := UpsertObject{
-		Kind:     kind,
-		Uid:      uidGetter.GetUID(),
-		Metadata: newObj.Metadata,
-		Spec:     newObj.Spec,
-		Status:   newObj.Status,
+	uo := struct {
+		Kind      string `db:"kind"`
+		Uid       string `db:"uid"`
+		Namespace string `db:"namespace"`
+		Name      string `db:"name"`
+		Data      any    `db:"data"`
+	}{
+		Kind:      kind,
+		Uid:       string(objectGetter.GetUID()),
+		Namespace: objectGetter.GetNamespace(),
+		Name:      objectGetter.GetName(),
+		Data:      data,
 	}
 
 	const upsertObject = `
-insert into object (kind, uid, metadata, spec, status)
-values (@kind, @uid, @metadata, @spec, @status)
+insert into object (uid, kind, namespace, name, data)
+values (@uid, @kind, @namespace, @name, @data)
 on conflict (uid)
     do update set kind        = @kind,
-                  metadata    = @metadata,
-                  spec        = @spec,
-                  status      = @status
+                  namespace   = @namespace,
+                  name        = @name,
+                  data        = @data
 `
 	_, err = q.execStruct(ctx, upsertObject, uo)
 	if err != nil {

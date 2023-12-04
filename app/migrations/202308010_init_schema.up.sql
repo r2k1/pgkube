@@ -1,10 +1,10 @@
 create table object
 (
-    kind       text  not null,
-    uid        uuid  primary key,
-    metadata   jsonb not null default '{}',
-    spec       jsonb not null default '{}',
-    status     jsonb not null default '{}',
+    uid        uuid primary key,
+    kind       text not null,
+    namespace  text not null,
+    name       text not null,
+    data       jsonb not null default '{}',
     deleted_at timestamp with time zone
 );
 
@@ -51,7 +51,7 @@ with controller as (select uid,
                            owner_ref ->> 'kind' as controller_kind,
                            owner_ref ->> 'name' as controller_name,
                            (owner_ref ->> 'uid') ::uuid as controller_uid
-                    from (select uid, jsonb_array_elements(metadata -> 'ownerReferences') as owner_ref
+                    from (select uid, jsonb_array_elements(data -> 'metadata' -> 'ownerReferences') as owner_ref
                           from object) owners
                     where owner_ref ->> 'controller' = 'true')
 select controller.uid,
@@ -112,16 +112,16 @@ $$ language plpgsql;
 
 create view pod as
 select
-    metadata ->> 'name' as name,
+    data -> 'metadata' ->> 'name' as name,
     uid,
-    metadata ->> 'namespace' as namespace,
-    (status ->> 'starttime'):: timestamp as start_time,
-    spec ->> 'nodeName' as node_name,
-    metadata -> 'labels' as labels,
-    metadata -> 'annotations' as annotations,
+    data -> 'metadata' ->> 'namespace' as namespace,
+    (data -> 'status' ->> 'starttime'):: timestamp as start_time,
+    data -> 'spec' ->> 'nodeName' as node_name,
+    data -> 'metadata' -> 'labels' as labels,
+    data -> 'metadata' -> 'annotations' as annotations,
     deleted_at:: timestamp,
-    coalesce((select sum (convert_cpu_to_cores(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.cpu') as value), 0) as request_cpu_cores,
-    coalesce((select sum (convert_memory_to_bytes(replace(value ::text, '"', ''))) from jsonb_path_query(spec, '$.containers[*].resources.requests.memory') as value), 0) as request_memory_bytes
+    coalesce((select sum (convert_cpu_to_cores(replace(value ::text, '"', ''))) from jsonb_path_query(data, '$.spec.containers[*].resources.requests.cpu') as value), 0) as request_cpu_cores,
+    coalesce((select sum (convert_memory_to_bytes(replace(value ::text, '"', ''))) from jsonb_path_query(data, '$.spec.containers[*].resources.requests.memory') as value), 0) as request_memory_bytes
 from object
 where kind = 'Pod';
 
