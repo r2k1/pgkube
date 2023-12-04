@@ -69,7 +69,12 @@ func TestManager_MultipleTargets(t *testing.T) {
 
 	// Test removing a target and ensuring it doesn't scrape again
 	m.RemoveTarget("test2")
-	time.Sleep(time.Millisecond * 150)
+	// drain the channel
+	select {
+	case <-ch2:
+	default:
+	}
+	time.Sleep(time.Millisecond * 120)
 
 	select {
 	case <-ch2:

@@ -62,7 +62,7 @@ from controller
          left join controller controller_controller on controller.controller_uid = controller_controller.uid;
 
 
-create or replace function convert_memory_to_bytes(input varchar) returns bigint as
+create or replace function parse_bytes(input varchar) returns bigint as
 $$
 declare
     num_part  bigint;
@@ -94,7 +94,7 @@ end;
 $$ language plpgsql;
 
 
-create or replace function convert_cpu_to_cores(input varchar) returns numeric as
+create or replace function parse_cores(input varchar) returns numeric as
 $$
 declare
 num_part     numeric;
@@ -111,19 +111,33 @@ $$ language plpgsql;
 
 
 create view pod as
-select
-    data -> 'metadata' ->> 'name' as name,
-    uid,
-    data -> 'metadata' ->> 'namespace' as namespace,
-    (data -> 'status' ->> 'starttime'):: timestamp as start_time,
-    data -> 'spec' ->> 'nodeName' as node_name,
-    data -> 'metadata' -> 'labels' as labels,
-    data -> 'metadata' -> 'annotations' as annotations,
-    deleted_at:: timestamp,
-    coalesce((select sum (convert_cpu_to_cores(replace(value ::text, '"', ''))) from jsonb_path_query(data, '$.spec.containers[*].resources.requests.cpu') as value), 0) as request_cpu_cores,
-    coalesce((select sum (convert_memory_to_bytes(replace(value ::text, '"', ''))) from jsonb_path_query(data, '$.spec.containers[*].resources.requests.memory') as value), 0) as request_memory_bytes
-from object
+select data -> 'metadata' ->> 'name'                                                                           as name,
+       uid,
+       data -> 'metadata' ->> 'namespace'                                                                      as namespace,
+       (data -> 'status' ->> 'starttime'):: timestamp                                                          as start_time,
+       data -> 'spec' ->> 'nodeName'                                                                           as node_name,
+       data -> 'metadata' -> 'labels'                                                                          as labels,
+       data -> 'metadata' -> 'annotations'                                                                     as annotations,
+       deleted_at:: timestamp,
+       coalesce(( select sum(parse_cores(replace(value ::text, '"', '')))
+                  from jsonb_path_query(data, '$.spec.containers[*].resources.requests.cpu') as value ),
+                0)                                                                                             as request_cpu_cores,
+       coalesce(( select sum(parse_bytes(replace(value ::text, '"', '')))
+                  from jsonb_path_query(data, '$.spec.containers[*].resources.requests.memory') as value ),
+                0)                                                                                             as request_memory_bytes,
+       coalesce(( select sum(parse_bytes(pvc.data -> 'spec' -> 'resources' -> 'requests' ->> 'storage'))
+         from object as pvc
+         where pvc.kind = 'PersistentVolumeClaim'
+           and pvc.name in
+               ( select replace(jsonb_path_query(p.data, '$.spec.volumes[*].persistentVolumeClaim.claimName')::text,
+                                '"', '')
+                 from object
+                 where uid = p.uid
+                   and kind = 'Pod' )
+           and pvc.namespace = p.data -> 'metadata' ->> 'namespace' ), 0)                                       as request_storage_bytes
+from object p
 where kind = 'Pod';
+
 
 
 create view cost_pod_hourly as
@@ -134,7 +148,7 @@ select *,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
        pod_hours as cpu_cost
-from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
+from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.request_storage_bytes, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
           least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
           greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600 as pod_hours
       from pod_usage_hourly
