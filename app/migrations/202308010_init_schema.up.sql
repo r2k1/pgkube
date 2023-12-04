@@ -34,16 +34,18 @@ create table pod_usage_hourly
 
 create table config
 (
-    single_row                   boolean primary key       default true,
-    default_price_cpu_core_hour  double precision not null default 0,
-    default_price_memory_gb_hour double precision not null default 0,
-    price_cpu_core_hour          double precision null,
-    price_memory_gigabyte_hour   double precision null,
+    single_row                    boolean primary key       default true,
+    default_price_cpu_core_hour   double precision not null default 0,
+    default_price_memory_gb_hour  double precision not null default 0,
+    default_price_storage_gb_hour double precision not null default 0,
+    price_cpu_core_hour           double precision null,
+    price_memory_gigabyte_hour    double precision null,
+    price_storage_gb_hour         double precision null,
     check (single_row)
 );
 
-insert into config (default_price_cpu_core_hour, default_price_memory_gb_hour)
-values (0.031611, 0.004237);
+insert into config (default_price_cpu_core_hour, default_price_memory_gb_hour, default_price_storage_gb_hour)
+values (0.031611, 0.004237, 0.00005479452);
 
 
 create view object_controller as
@@ -142,12 +144,9 @@ where kind = 'Pod';
 
 create view cost_pod_hourly as
 select *,
-       greatest(request_memory_bytes, memory_bytes_avg) *
-       (select coalesce(price_memory_gigabyte_hour, default_price_memory_gb_hour) from config) / 1000000000 *
-       pod_hours as memory_cost,
-       greatest(request_cpu_cores, cpu_cores_avg) *
-       (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) *
-       pod_hours as cpu_cost
+       greatest(request_memory_bytes, memory_bytes_avg) * (select coalesce(price_memory_gigabyte_hour, default_price_memory_gb_hour) from config) / 1000000000 * pod_hours as memory_cost,
+       greatest(request_cpu_cores, cpu_cores_avg) * (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) * pod_hours as cpu_cost,
+       request_storage_bytes * (select coalesce(price_storage_gb_hour, default_price_storage_gb_hour) from config) / 1000000000 * pod_hours as storage_cost
 from (select timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.start_time, pod.deleted_at, pod.request_memory_bytes, pod.request_cpu_cores, pod.request_storage_bytes, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, cpu_cores_max, memory_bytes_avg, memory_bytes_max, extract (epoch from
           least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
           greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600 as pod_hours

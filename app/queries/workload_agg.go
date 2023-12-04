@@ -37,6 +37,7 @@ func AllowedSortBy() []string {
 		"pod_hours",
 		"cpu_cost",
 		"memory_cost",
+		"storage_cost",
 		"total_cost",
 	}
 }
@@ -103,7 +104,8 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		"round(sum(pod_hours), 2) as pod_hours",
 		"round(sum(cpu_cost)::numeric, 2) as cpu_cost",
 		"round(sum(memory_cost)::numeric, 2) as memory_cost",
-		"round(sum(memory_cost + cpu_cost)::numeric, 2) as total_cost",
+		"round(sum(storage_cost)::numeric, 2) as storage_cost",
+		"round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2) as total_cost",
 	)
 
 	query := psq.
