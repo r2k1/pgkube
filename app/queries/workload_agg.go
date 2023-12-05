@@ -20,21 +20,21 @@ type Workload struct {
 
 // poor man immutable slices
 func AllowedGroupBy() []string {
-	return []string{"namespace", "controller_kind", "controller_name", "pod_name", "node_name"}
+	return []string{"namespace", "controller_kind", "controller_name", "name", "node_name"}
 }
 func AllowedSortBy() []string {
 	return []string{
 		"namespace",
 		"controller_kind",
 		"controller_name",
-		"pod_name",
+		"name",
 		"node_name",
 		"request_cpu_cores",
 		"used_cpu_cores",
 		"request_memory_bytes",
 		"used_memory_bytes",
 		"request_storage_bytes",
-		"pod_hours",
+		"hours",
 		"cpu_cost",
 		"memory_cost",
 		"storage_cost",
@@ -96,12 +96,12 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 
 	cols := append([]string(nil), req.GroupBy...)
 	cols = append(cols,
-		fmt.Sprintf("round((sum(request_cpu_cores * pod_hours) / %f)::numeric, 2) as request_cpu_cores", hours),
-		fmt.Sprintf("round((sum(cpu_cores_avg * pod_hours) / %f)::numeric, 2) as used_cpu_cores", hours),
-		fmt.Sprintf("round(sum(request_memory_bytes * pod_hours) / %f) as request_memory_bytes", hours),
-		fmt.Sprintf("round(sum(memory_bytes_avg * pod_hours) / %f) as used_memory_bytes", hours),
-		fmt.Sprintf("round(sum(request_storage_bytes * pod_hours) / %f) as request_storage_bytes", hours),
-		"round(sum(pod_hours), 2) as pod_hours",
+		fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2) as request_cpu_cores", hours),
+		fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2) as used_cpu_cores", hours),
+		fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f) as request_memory_bytes", hours),
+		fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f) as used_memory_bytes", hours),
+		fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f) as request_storage_bytes", hours),
+		"round(sum(hours), 2) as hours",
 		"round(sum(cpu_cost)::numeric, 2) as cpu_cost",
 		"round(sum(memory_cost)::numeric, 2) as memory_cost",
 		"round(sum(storage_cost)::numeric, 2) as storage_cost",
@@ -111,9 +111,9 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 	query := psq.
 		Select(cols...).
 		GroupBy(req.GroupBy...).
-		From("cost_pod_hourly").
+		From("cost_hourly").
 		Where(sq.GtOrEq{"timestamp": req.Start}).
-		Where(sq.LtOrEq{"timestamp": req.End})
+		Where(sq.Lt{"timestamp": req.End})
 	if req.OderBy != "" {
 		query = query.OrderBy(req.OderBy)
 	}

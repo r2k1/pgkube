@@ -50,8 +50,7 @@ values (0.031611, 0.004237 / 1000000000, 0.00005479452 / 1000000000);
 
 create view object_controller as
 with controller as (select uid,
-                           owner_ref -
-        >> 'kind' as controller_kind,
+                           owner_ref ->> 'kind' as controller_kind,
         owner_ref ->> 'name' as controller_name,
         (owner_ref ->> 'uid') ::uuid as controller_uid
         from (select uid, jsonb_array_elements(data -> 'metadata' -> 'ownerReferences') as owner_ref
@@ -131,8 +130,8 @@ language plpgsql;
 
 create view pod as
 select *,
-       (data - > 'status' ->> 'starttime'):: timestamp                                                          as start_time, data -> 'spec' -
-        >> 'nodeName' as node_name,
+       (data -> 'status' ->> 'starttime'):: timestamp as start_time,
+        data -> 'spec' ->> 'nodeName' as node_name,
         data -> 'metadata' -> 'labels' as labels,
         data -> 'metadata' -> 'annotations' as annotations,
         coalesce (( select sum (parse_cores(replace(value ::text, '"', '')))
@@ -154,113 +153,113 @@ select *,
         from object p
         where kind = 'Pod';
 
-create view pod_hourly as
+create view pod_usage_request_hourly as
 select
-        timestamp, pod.uid, pod.namespace, pod.name as pod_name, pod.node_name, pod.request_memory_bytes, pod.request_cpu_cores, pod.request_storage_bytes, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, memory_bytes_avg, extract (epoch from
+        timestamp, pod.uid, pod.namespace, pod.name, pod.node_name, pod.request_memory_bytes, pod.request_cpu_cores, pod.request_storage_bytes, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, memory_bytes_avg, extract (epoch from
         (least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
-        greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600) as pod_hours
+        greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600) as hours
         from pod_usage_hourly
         inner join pod on (pod_usage_hourly.pod_uid = pod.uid)
         inner join object_controller
         on (pod_uid = object_controller.uid::uuid);
 
-create view cost_node_idle as
-select gs.timestamp as timestamp,
-       object.uid                                                                                  as uid,
-       '__idle__'                                                                                  as namespace,
-       '__idle__'                                                                                  as pod_name,
-       object.name                                                                                 as node_name,
-       (parse_bytes(object.data -> 'status' -> 'allocatable' ->> 'memory')) -
-       coalesce(node_usage_hourly.request_memory_bytes, 0)                                         as request_memory_bytes,
-       (parse_cores(object.data -> 'status' -> 'allocatable' ->> 'cpu')) -
-       coalesce(node_usage_hourly.request_cpu_cores, 0)                                            as request_cpu_cores,
-       0                                                                                           as request_storage_bytes,
-       data -> 'metadata' -> 'labels'                                                              as labels,
-       data -> 'metadata' -> 'annotations'                                                         as annotations,
-       null::uuid                                                                                  as controller_uid,
-       '__idle__'                                                                                  as controller_kind,
-       '__idle__'                                                                                  as controller_name,
-       0                                                                                           as cpu_cores_avg,
-       0                                                                                           as memory_bytes_avg,
-       extract(epoch from ((least(gs.timestamp + interval '1 hour', object.deleted_at, now()) -
-                            greatest(gs.timestamp, (object.data -> 'metadata' ->> 'creationTimestamp')::timestamp)) /
-                           3600))                                                                  as pod_hours,
-       ((parse_bytes(object.data -> 'status' -> 'capacity' ->> 'memory') -
-         parse_bytes(object.data -> 'status' -> 'allocatable' ->> 'memory')) *
-        ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config )) as memory_cost,
-       ((parse_cores(object.data -> 'status' -> 'capacity' ->> 'cpu') -
-         parse_cores(object.data -> 'status' -> 'allocatable' ->> 'cpu')) *
-        ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config ))         as cpu_cost,
-       0                                                                                           as storage_cost
+create view node as
+select *,
+       parse_bytes(object.data -> 'status' -> 'allocatable' ->> 'memory') as allocatable_memory_bytes,
+       parse_cores(object.data -> 'status' -> 'allocatable' ->> 'cpu')    as allocatable_cpu_cores,
+       parse_bytes(object.data -> 'status' -> 'capacity' ->> 'memory')    as capacity_memory_bytes,
+       parse_cores(object.data -> 'status' -> 'capacity' ->> 'cpu')       as capacity_cpu_cores,
+       data -> 'metadata' -> 'labels'                                     as labels,
+       data -> 'metadata' -> 'annotations'                                as annotations,
+       (data -> 'metadata' ->> 'creationTimestamp') ::timestamp as creation_timestamp
 from object
-         cross join generate_series(date_trunc('hour',
-                                               ( select min((data -> 'metadata' ->> 'creationTimestamp')::timestamp)
-                                                 from object
-                                                 where kind = 'Node' )), date_trunc('hour', now()),
-                                    '1 hour'::interval) gs(timestamp)
+where kind = 'Node';
+
+create view node_hourly as
+select gs.timestamp                                                                   as timestamp,
+       node.*,
+       extract(epoch from (least(gs.timestamp + interval '1 hour', node.deleted_at, now()) -
+                            greatest(gs.timestamp, node.creation_timestamp))) / 3600 as hours
+from node,
+     generate_series(date_trunc('hour', ( select min(creation_timestamp) from node )), date_trunc('hour', now()),
+                     '1 hour'::interval) gs(timestamp)
+where (node.deleted_at is null or gs.timestamp < node.deleted_at);
+
+
+create view cost_node_idle_hourly as
+select node.timestamp                                                                          as timestamp,
+       node.uid                                                                                as uid,
+       '__idle__'                                                                              as namespace,
+       node.name                                                                               as name,
+       node.name                                                                               as node_name,
+       allocatable_memory_bytes - coalesce(node_usage_hourly.request_memory_bytes, 0)          as request_memory_bytes,
+       allocatable_cpu_cores - coalesce(node_usage_hourly.request_cpu_cores, 0)                as request_cpu_cores,
+       0                                                                                       as request_storage_bytes,
+       node.labels                                                                             as labels,
+       node.annotations                                                                        as annotations,
+       null::uuid                                                                              as controller_uid,
+       '__idle__'                                                                              as controller_kind,
+       '__idle__'                                                                              as controller_name,
+       0                                                                                       as cpu_cores_avg,
+       0                                                                                       as memory_bytes_avg,
+       node.hours                                                                              as hours,
+       (allocatable_memory_bytes - coalesce(node_usage_hourly.request_memory_bytes, 0)) *
+       ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config ) as memory_cost,
+       (allocatable_cpu_cores - coalesce(node_usage_hourly.request_cpu_cores, 0)) *
+       ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config )       as cpu_cost,
+       0                                                                                       as storage_cost
+from node_hourly node
          left join ( select node_name,
                             timestamp,
-                            sum(request_cpu_cores * pod_hours)                    as request_cpu_cores,
-                            sum(request_memory_bytes * pod_hours)                 as request_memory_bytes,
-                            sum(cpu_cores_avg * pod_hours)                        as cpu_cores_avg,
-                            sum(memory_bytes_avg * pod_hours)                     as memory_bytes_avg,
-                            sum(pod_hours)                                        as pod_hours,
-                            sum(greatest(request_cpu_cores, cpu_cores_avg))       as cpu_cores,
-                            sum(greatest(request_memory_bytes, memory_bytes_avg)) as memory_bytes
-                     from pod_hourly
+                            sum(request_cpu_cores * hours)                    as request_cpu_cores,
+                            sum(request_memory_bytes * hours)                 as request_memory_bytes,
+                            sum(cpu_cores_avg * hours)                        as cpu_cores_avg,
+                            sum(memory_bytes_avg * hours)                     as memory_bytes_avg
+                     from pod_usage_request_hourly
                      group by node_name, timestamp ) node_usage_hourly
-                   on (node_usage_hourly.node_name = object.name and node_usage_hourly.timestamp = gs.timestamp)
-where object.kind = 'Node'
-  and (object.deleted_at is null or gs.timestamp < object.deleted_at);
+                   on (node_usage_hourly.node_name = node.name and node_usage_hourly.timestamp = node.timestamp);
 
-create view cost_node_system as
-select gs.timestamp as timestamp,
-       object.uid                                                                                  as uid,
-       '__system__'                                                                                as namespace,
-       '__system__'                                                                                as pod_name,
-       object.name                                                                                 as node_name,
-       (parse_bytes(object.data -> 'status' -> 'capacity' ->> 'memory') -
-        parse_bytes(object.data -> 'status' -> 'allocatable' ->> 'memory'))                        as request_memory_bytes,
-       (parse_cores(object.data -> 'status' -> 'capacity' ->> 'cpu') -
-        parse_cores(object.data -> 'status' -> 'allocatable' ->> 'cpu'))                           as request_cpu_cores,
-       0                                                                                           as request_storage_bytes,
-       data -> 'metadata' -> 'labels'                                                              as labels,
-       data -> 'metadata' -> 'annotations'                                                         as annotations,
-       null::uuid                                                                                  as controller_uid,
-       '__system__'                                                                                as controller_kind,
-       '__system__'                                                                                as controller_name,
-       0                                                                                           as cpu_cores_avg,
-       0                                                                                           as memory_bytes_avg,
-       extract(epoch from ((least(gs.timestamp + interval '1 hour', object.deleted_at, now()) -
-                            greatest(gs.timestamp, (object.data -> 'metadata' ->> 'creationTimestamp')::timestamp)) /
-                           3600))                                                                  as pod_hours,
-       ((parse_bytes(object.data -> 'status' -> 'capacity' ->> 'memory') -
-         parse_bytes(object.data -> 'status' -> 'allocatable' ->> 'memory')) *
-        ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config )) as memory_cost,
-       ((parse_cores(object.data -> 'status' -> 'capacity' ->> 'cpu') -
-         parse_cores(object.data -> 'status' -> 'allocatable' ->> 'cpu')) *
-        ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config ))         as cpu_cost,
-       0                                                                                           as storage_cost
-from object,
-     generate_series(date_trunc('hour', ( select min((data -> 'metadata' ->> 'creationTimestamp')::timestamp)
-                                          from object
-                                          where kind = 'Node' )), date_trunc('hour', now()),
-                     '1 hour'::interval) gs(timestamp)
-where object.kind = 'Node'
-  and (object.deleted_at is null or gs.timestamp < object.deleted_at);
+
+create view cost_node_system_hourly as
+select timestamp,
+       uid                                                                                     as uid,
+       '__system__'                                                                            as namespace,
+       name                                                                                    as name,
+       name                                                                                    as node_name,
+       capacity_memory_bytes - allocatable_memory_bytes                                        as request_memory_bytes,
+       capacity_cpu_cores - allocatable_cpu_cores                                              as request_cpu_cores,
+       0                                                                                       as request_storage_bytes,
+       labels                                                                                  as labels,
+       annotations                                                                             as annotations,
+       null::uuid                                                                              as controller_uid,
+       '__system__'                                                                            as controller_kind,
+       '__system__'                                                                            as controller_name,
+       0                                                                                       as cpu_cores_avg,
+       0                                                                                       as memory_bytes_avg,
+       hours                                                                                   as hours,
+       hours * (capacity_memory_bytes - allocatable_memory_bytes) *
+       ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config ) as memory_cost,
+       hours * (capacity_cpu_cores - allocatable_cpu_cores) *
+       ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config )       as cpu_cost,
+       0                                                                                       as storage_cost
+from node_hourly;
 
 create view cost_pod_hourly as
 select *,
        greatest(request_memory_bytes, memory_bytes_avg) *
-       (select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config) * pod_hours as memory_cost,
+       (select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config) * hours as memory_cost,
        greatest(request_cpu_cores, cpu_cores_avg) *
-       (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) * pod_hours       as cpu_cost,
+       (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) * hours       as cpu_cost,
        request_storage_bytes * (select coalesce(price_storage_byte_hour, default_price_storage_byte_hour) from config) *
-       pod_hours                                                                                         as storage_cost
-from pod_hourly
+       hours                                                                                         as storage_cost
+from pod_usage_request_hourly;
+
+create view cost_hourly as
+select *
+from cost_pod_hourly
 union all
 select *
-from cost_node_idle
+from cost_node_idle_hourly
 union all
 select *
-from cost_node_system;
+from cost_node_system_hourly;
