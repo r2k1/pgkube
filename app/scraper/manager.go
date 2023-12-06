@@ -16,15 +16,17 @@ type targetInfo struct {
 }
 
 type Manager struct {
-	targets map[string]*targetInfo
-	mu      sync.Mutex
-	ctx     context.Context
+	targets              map[string]*targetInfo
+	mu                   sync.Mutex
+	ctx                  context.Context
+	disableScrapingDelay bool
 }
 
-func NewManager(ctx context.Context) *Manager {
+func NewManager(ctx context.Context, disableScrapingDelay bool) *Manager {
 	return &Manager{
-		targets: make(map[string]*targetInfo),
-		ctx:     ctx,
+		targets:              make(map[string]*targetInfo),
+		ctx:                  ctx,
+		disableScrapingDelay: disableScrapingDelay,
 	}
 }
 
@@ -45,20 +47,16 @@ func (m *Manager) AddTarget(id string, scrapeFunc ScrapeFunc, interval time.Dura
 	}
 
 	go func() {
-		// Add a random delay before the initial scrape to distribute the scraping start times
-		// nolint:gosec
-		initialDelay := time.Duration(rand.Int63n(int64(interval)))
-		select {
-		case <-time.After(initialDelay):
-			// Continue with the scraping after the delay
-		case <-scrapeCtx.Done():
-			// Context was cancelled during the initial delay
-			slog.Info("target scraper cancelled during initial delay", "id", id)
-			return
+		if !m.disableScrapingDelay {
+			randomDelay(scrapeCtx, interval)
 		}
 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		// start first scrape immediately
+		if err := scrapeFunc(scrapeCtx); err != nil {
+			slog.Error("scraping target", "id", id, "error", err)
+		}
 
 		for {
 			select {
@@ -75,6 +73,18 @@ func (m *Manager) AddTarget(id string, scrapeFunc ScrapeFunc, interval time.Dura
 	}()
 
 	slog.Info("new scraping target added", "id", id)
+}
+
+func randomDelay(ctx context.Context, maxInterval time.Duration) {
+	// nolint:gosec
+	initialDelay := time.Duration(rand.Int63n(int64(maxInterval)))
+	select {
+	case <-time.After(initialDelay):
+		// Continue with the scraping after the delay
+	case <-ctx.Done():
+		// Context was cancelled during the initial delay
+		return
+	}
 }
 
 func (m *Manager) RemoveTarget(id string) {

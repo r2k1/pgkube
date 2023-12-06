@@ -22,7 +22,7 @@ func mockScrapeFunc(ch chan<- bool) ScrapeFunc {
 
 func TestManager_AddTarget(t *testing.T) {
 	ctx := Context(t)
-	m := NewManager(ctx)
+	m := NewManager(ctx, false)
 	ch := make(chan bool, 1)
 	m.AddTarget("test", mockScrapeFunc(ch), time.Millisecond*50)
 
@@ -35,7 +35,7 @@ func TestManager_AddTarget(t *testing.T) {
 
 func TestManager_RemoveTarget(t *testing.T) {
 	ctx := Context(t)
-	m := NewManager(ctx)
+	m := NewManager(ctx, false)
 	ch := make(chan bool, 1)
 	m.AddTarget("test", mockScrapeFunc(ch), time.Millisecond*50)
 	<-ch
@@ -52,7 +52,7 @@ func TestManager_RemoveTarget(t *testing.T) {
 
 func TestManager_MultipleTargets(t *testing.T) {
 	ctx := Context(t)
-	m := NewManager(ctx)
+	m := NewManager(ctx, false)
 
 	ch1 := make(chan bool, 1)
 	ch2 := make(chan bool, 1)

@@ -31,10 +31,11 @@ import (
 )
 
 type Config struct {
-	DatabaseURL string `env:"DATABASE_URL,required"`
-	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
-	LogLevel    string `env:"LOG_LEVEL" envDefault:"INFO"`
-	Addr        string `env:"ADDR" envDefault:":8080"`
+	DatabaseURL          string `env:"DATABASE_URL,required"`
+	KubeConfig           string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
+	LogLevel             string `env:"LOG_LEVEL" envDefault:"INFO"`
+	Addr                 string `env:"ADDR" envDefault:":8080"`
+	DisableScrapingDelay bool   `env:"DISABLE_SCRAPING_DELAY" envDefault:"false"`
 }
 
 func (c *Config) SlogLevel() slog.Level {
@@ -93,7 +94,7 @@ func Execute(ctx context.Context) error {
 		return err
 	}
 
-	err = scraper.StartScraper(ctx, queries, clientset, time.Minute)
+	err = scraper.StartScraper(ctx, queries, clientset, time.Minute, cfg.DisableScrapingDelay)
 	if err != nil {
 		return err
 	}

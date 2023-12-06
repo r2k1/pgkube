@@ -21,7 +21,7 @@ import (
 const resyncInterval = time.Hour
 const gcInterval = time.Hour
 
-func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kubernetes.Clientset, interval time.Duration) error {
+func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kubernetes.Clientset, interval time.Duration, disableScrapingDelay bool) error {
 	factory := informers.NewSharedInformerFactory(clientSet, resyncInterval)
 
 	informers := map[string]cache.SharedInformer{
@@ -42,7 +42,7 @@ func StartScraper(ctx context.Context, queries *queries.Queries, clientSet *kube
 			return fmt.Errorf("adding %s persist event handler: %w", kind, err)
 		}
 	}
-	manager := NewManager(ctx)
+	manager := NewManager(ctx, disableScrapingDelay)
 	cache := NewPodCacheK8s(factory.Core().V1().Pods().Lister())
 	nodeScrapeHandler := NewNodeEventHandler(manager, k8s.NewClient(clientSet), queries, interval, cache)
 	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandlerWithResyncPeriod(nodeScrapeHandler, resyncInterval); err != nil {
