@@ -155,9 +155,22 @@ select *,
 
 create view pod_usage_request_hourly as
 select
-        timestamp, pod.uid, pod.namespace, pod.name, pod.node_name, pod.request_memory_bytes, pod.request_cpu_cores, pod.request_storage_bytes, pod.labels, pod.annotations, object_controller.controller_uid, object_controller.controller_kind as controller_kind, object_controller.controller_name, cpu_cores_avg, memory_bytes_avg, extract (epoch from
-        (least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) -
-        greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600) as hours
+        timestamp,
+            pod.uid,
+            pod.namespace,
+            pod.name,
+            pod.node_name,
+            pod.request_cpu_cores,
+            pod.request_memory_bytes,
+            pod.request_storage_bytes,
+            pod.labels,
+            pod.annotations,
+            object_controller.controller_uid,
+            object_controller.controller_kind as controller_kind,
+            object_controller.controller_name,
+            cpu_cores_avg,
+            memory_bytes_avg,
+            extract (epoch from (least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) - greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600) as hours
         from pod_usage_hourly
         inner join pod on (pod_usage_hourly.pod_uid = pod.uid)
         inner join object_controller
@@ -192,29 +205,27 @@ select node.timestamp                                                           
        '__idle__'                                                                              as namespace,
        node.name                                                                               as name,
        node.name                                                                               as node_name,
-       allocatable_memory_bytes - coalesce(node_usage_hourly.request_memory_bytes, 0)          as request_memory_bytes,
        allocatable_cpu_cores - coalesce(node_usage_hourly.request_cpu_cores, 0)                as request_cpu_cores,
+       allocatable_memory_bytes - coalesce(node_usage_hourly.request_memory_bytes, 0)          as request_memory_bytes,
        0                                                                                       as request_storage_bytes,
        node.labels                                                                             as labels,
        node.annotations                                                                        as annotations,
        null::uuid                                                                              as controller_uid,
        '__idle__'                                                                              as controller_kind,
        '__idle__'                                                                              as controller_name,
-       0                                                                                       as cpu_cores_avg,
-       0                                                                                       as memory_bytes_avg,
+       allocatable_cpu_cores - coalesce(node_usage_hourly.cpu_cores, 0)                        as cpu_cores_avg,
+       allocatable_memory_bytes - coalesce(node_usage_hourly.memory_bytes, 0)                  as memory_bytes_avg,
        node.hours                                                                              as hours,
-       (allocatable_memory_bytes - coalesce(node_usage_hourly.request_memory_bytes, 0)) *
-       ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config ) as memory_cost,
-       (allocatable_cpu_cores - coalesce(node_usage_hourly.request_cpu_cores, 0)) *
-       ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config )       as cpu_cost,
+       (allocatable_cpu_cores - greatest(node_usage_hourly.request_cpu_cores, node_usage_hourly.cpu_cores, 0)) * ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config ) as cpu_cost,
+       (allocatable_memory_bytes - greatest(node_usage_hourly.request_memory_bytes, allocatable_memory_bytes, 0)) * ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config ) as memory_cost,
        0                                                                                       as storage_cost
 from node_hourly node
          left join ( select node_name,
                             timestamp,
                             sum(request_cpu_cores * hours)                    as request_cpu_cores,
                             sum(request_memory_bytes * hours)                 as request_memory_bytes,
-                            sum(cpu_cores_avg * hours)                        as cpu_cores_avg,
-                            sum(memory_bytes_avg * hours)                     as memory_bytes_avg
+                            sum(cpu_cores_avg * hours)                        as cpu_cores,
+                            sum(memory_bytes_avg * hours)                     as memory_bytes
                      from pod_usage_request_hourly
                      group by node_name, timestamp ) node_usage_hourly
                    on (node_usage_hourly.node_name = node.name and node_usage_hourly.timestamp = node.timestamp);
@@ -226,8 +237,8 @@ select timestamp,
        '__system__'                                                                            as namespace,
        name                                                                                    as name,
        name                                                                                    as node_name,
-       capacity_memory_bytes - allocatable_memory_bytes                                        as request_memory_bytes,
        capacity_cpu_cores - allocatable_cpu_cores                                              as request_cpu_cores,
+       capacity_memory_bytes - allocatable_memory_bytes                                        as request_memory_bytes,
        0                                                                                       as request_storage_bytes,
        labels                                                                                  as labels,
        annotations                                                                             as annotations,
@@ -237,19 +248,19 @@ select timestamp,
        0                                                                                       as cpu_cores_avg,
        0                                                                                       as memory_bytes_avg,
        hours                                                                                   as hours,
+       hours * (capacity_cpu_cores - allocatable_cpu_cores) *
+        ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config )      as cpu_cost,
        hours * (capacity_memory_bytes - allocatable_memory_bytes) *
        ( select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config ) as memory_cost,
-       hours * (capacity_cpu_cores - allocatable_cpu_cores) *
-       ( select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config )       as cpu_cost,
        0                                                                                       as storage_cost
 from node_hourly;
 
 create view cost_pod_hourly as
 select *,
-       greatest(request_memory_bytes, memory_bytes_avg) *
-       (select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config) * hours as memory_cost,
        greatest(request_cpu_cores, cpu_cores_avg) *
        (select coalesce(price_cpu_core_hour, default_price_cpu_core_hour) from config) * hours       as cpu_cost,
+       greatest(request_memory_bytes, memory_bytes_avg) *
+       (select coalesce(price_memory_byte_hour, default_price_memory_byte_hour) from config) * hours as memory_cost,
        request_storage_bytes * (select coalesce(price_storage_byte_hour, default_price_storage_byte_hour) from config) *
        hours                                                                                         as storage_cost
 from pod_usage_request_hourly;
