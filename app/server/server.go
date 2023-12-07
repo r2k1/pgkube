@@ -15,22 +15,43 @@ import (
 
 type Srv struct {
 	queries    *queries.Queries
-	template   *template.Template
+	renderFunc func(w http.ResponseWriter, name string, data interface{})
 	assetsPath string
 }
 
-func NewSrv(queries *queries.Queries, templatesPath string, assetsPath string) *Srv {
+func NewSrv(queries *queries.Queries, templatesPath string, assetsPath string, autoReload bool) *Srv {
+	var renderer func(w http.ResponseWriter, name string, data interface{})
+	if autoReload {
+		renderer = func(w http.ResponseWriter, name string, data interface{}) {
+			templates := MustTemplates(templatesPath)
+			err := templates.ExecuteTemplate(w, name, data)
+			if err != nil {
+				HTTPError(w, err)
+			}
+		}
+	} else {
+		templates := MustTemplates(templatesPath)
+		renderer = func(w http.ResponseWriter, name string, data interface{}) {
+			err := templates.ExecuteTemplate(w, name, data)
+			if err != nil {
+				HTTPError(w, err)
+			}
+		}
+	}
+	return &Srv{
+		renderFunc: renderer,
+		queries:    queries,
+		assetsPath: assetsPath,
+	}
+}
+
+func MustTemplates(templatesPath string) *template.Template {
 	funcMap := template.FuncMap{
 		"byteCountSI": byteCountSI,
 		"formatData":  formatData,
 	}
 	path := filepath.Join(templatesPath, "*.html")
-	tmpl := template.Must(template.New("").Funcs(sprig.FuncMap()).Funcs(funcMap).ParseGlob(path))
-	return &Srv{
-		template:   tmpl,
-		queries:    queries,
-		assetsPath: assetsPath,
-	}
+	return template.Must(template.New("").Funcs(sprig.FuncMap()).Funcs(funcMap).ParseGlob(path))
 }
 
 func (s *Srv) Handler() http.Handler {
@@ -58,7 +79,7 @@ func (s *Srv) Start(addr string) error {
 	return nil
 }
 
-func (s *Srv) HttpError(w http.ResponseWriter, err error) {
+func HTTPError(w http.ResponseWriter, err error) {
 	slog.Error("HTTP error", "error", err)
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }

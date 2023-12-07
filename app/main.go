@@ -31,11 +31,14 @@ import (
 )
 
 type Config struct {
-	DatabaseURL          string `env:"DATABASE_URL,required"`
-	KubeConfig           string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
-	LogLevel             string `env:"LOG_LEVEL" envDefault:"INFO"`
-	Addr                 string `env:"ADDR" envDefault:":8080"`
-	DisableScrapingDelay bool   `env:"DISABLE_SCRAPING_DELAY" envDefault:"false"`
+	DatabaseURL string `env:"DATABASE_URL,required"`
+	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
+	LogLevel    string `env:"LOG_LEVEL" envDefault:"INFO"`
+	Addr        string `env:"ADDR" envDefault:":8080"`
+
+	// Dev configuration, shouldn't be used in production
+	DisableScrapingDelay bool `env:"DISABLE_SCRAPING_DELAY" envDefault:"false"`
+	EnableTemplateReload bool `env:"ENABLE_TEMPLATE_RELOAD" envDefault:"false"`
 }
 
 func (c *Config) SlogLevel() slog.Level {
@@ -100,7 +103,7 @@ func Execute(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		err := server.NewSrv(queries, "templates", "assets").Start(cfg.Addr)
+		err := server.NewSrv(queries, "templates", "assets", cfg.EnableTemplateReload).Start(cfg.Addr)
 		if err != nil {
 			slog.Error("server error", "error", err)
 		}

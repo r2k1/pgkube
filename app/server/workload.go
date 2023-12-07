@@ -231,17 +231,17 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 
 	aggRequest, err := workloadReq.ToQuery()
 	if err != nil {
-		s.HttpError(w, err)
+		HTTPError(w, err)
 		return
 	}
 
 	aggData, err := s.queries.WorkloadAgg(r.Context(), aggRequest)
 	if err != nil {
-		s.HttpError(w, err)
+		HTTPError(w, err)
 		return
 	}
 
-	err = s.template.ExecuteTemplate(w, "index.html", &HomeTemplateData{
+	s.renderFunc(w, "index.html", &HomeTemplateData{
 		Request:        workloadReq,
 		AggData:        aggData,
 		GroupByOptions: queries.AllowedGroupBy(),
@@ -255,10 +255,6 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 			{Label: "custom", Value: ""},
 		},
 	})
-	if err != nil {
-		s.HttpError(w, err)
-		return
-	}
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
