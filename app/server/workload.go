@@ -26,8 +26,8 @@ type WorkloadRequest struct {
 	GroupBy []string
 	OderBy  string
 	Range   string
-	Start   string
-	End     string
+	Start   time.Time
+	End     time.Time
 }
 
 func DefaultRequest() WorkloadRequest {
@@ -39,25 +39,16 @@ func DefaultRequest() WorkloadRequest {
 }
 
 func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
-	if r.Range != "" && (r.Start != "" || r.End != "") {
+	if r.Range != "" && (!r.Start.IsZero() || !r.End.IsZero()) {
 		return queries.WorkloadAggRequest{}, fmt.Errorf("range and start/end are mutually exclusive")
 	}
 	var start, end time.Time
-	if r.Start == "" || r.End == "" {
+
+	if r.Start.IsZero() || r.End.IsZero() {
 		var err error
 		start, end, err = rangeToStartEnd(r.Range)
 		if err != nil {
 			return queries.WorkloadAggRequest{}, err
-		}
-	} else {
-		var err error
-		start, err = time.Parse(time.RFC3339, r.Start)
-		if err != nil {
-			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid start: %w", err)
-		}
-		end, err = time.Parse(time.RFC3339, r.End)
-		if err != nil {
-			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid end: %w", err)
 		}
 	}
 	return queries.WorkloadAggRequest{
@@ -119,14 +110,6 @@ func (r WorkloadRequest) LinkRemoveGroup(groupBy string) string {
 
 func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
 	r = r.Clone()
-	if rangeValue == "" {
-		start, end, _ := rangeToStartEnd(r.Range)
-		r.Start = start.Format(time.RFC3339)
-		r.End = end.Format(time.RFC3339)
-	} else {
-		r.Start = ""
-		r.End = ""
-	}
 	r.Range = rangeValue
 	return r.Link()
 }
@@ -134,13 +117,10 @@ func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
 func (r WorkloadRequest) LinkPrev() string {
 	start := r.StartDate()
 	end := r.EndDate()
-	if start.IsZero() || end.IsZero() {
-		return r.Link()
-	}
 	r = r.Clone()
 	dur := -end.Sub(start)
-	r.Start = start.Add(dur).Format(time.RFC3339)
-	r.End = end.Add(dur).Format(time.RFC3339)
+	r.Start = start.Add(dur)
+	r.End = end.Add(dur)
 	r.Range = ""
 	return r.Link()
 }
@@ -148,13 +128,10 @@ func (r WorkloadRequest) LinkPrev() string {
 func (r WorkloadRequest) LinkNext() string {
 	start := r.StartDate()
 	end := r.EndDate()
-	if start.IsZero() || end.IsZero() {
-		return r.Link()
-	}
 	r = r.Clone()
 	dur := end.Sub(start)
-	r.Start = start.Add(dur).Format(time.RFC3339)
-	r.End = end.Add(dur).Format(time.RFC3339)
+	r.Start = start.Add(dur)
+	r.End = end.Add(dur)
 	r.Range = ""
 	return r.Link()
 }
@@ -220,14 +197,16 @@ func (r WorkloadRequest) Link() string {
 	values := url.Values{
 		"groupby": r.GroupBy,
 	}
-	if r.Start != "" {
-		values.Set("start", r.Start)
-	}
-	if r.End != "" {
-		values.Set("end", r.End)
-	}
+
 	if r.Range != "" {
 		values.Set("range", r.Range)
+	} else {
+		if !r.Start.IsZero() {
+			values.Set("start", r.StartValue())
+		}
+		if !r.End.IsZero() {
+			values.Set("end", r.EndValue())
+		}
 	}
 	if r.OderBy != "" {
 		values.Set("orderby", r.OderBy)
@@ -242,8 +221,7 @@ func (r WorkloadRequest) StartDate() time.Time {
 		start, _, _ := rangeToStartEnd(r.Range)
 		return start
 	}
-	t, _ := time.Parse(time.RFC3339, r.Start)
-	return t
+	return r.Start
 }
 
 func (r WorkloadRequest) EndDate() time.Time {
@@ -251,24 +229,22 @@ func (r WorkloadRequest) EndDate() time.Time {
 		_, end, _ := rangeToStartEnd(r.Range)
 		return end
 	}
-	t, _ := time.Parse(time.RFC3339, r.End)
-	return t
+	return r.End
 }
 
 func (r WorkloadRequest) StartValue() string {
-	if r.Range != "" {
-		start, _, _ := rangeToStartEnd(r.Range)
-		return start.Format(time.RFC3339)
-	}
-	return r.Start
+	return timeToString(r.StartDate())
 }
 
 func (r WorkloadRequest) EndValue() string {
-	if r.Range != "" {
-		_, end, _ := rangeToStartEnd(r.Range)
-		return end.Format(time.RFC3339)
+	return timeToString(r.EndDate())
+}
+
+func timeToString(t time.Time) string {
+	if t.IsZero() {
+		return ""
 	}
-	return r.End
+	return t.Format(time.RFC3339)
 }
 
 func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
@@ -302,33 +278,19 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
+	start, _ := time.Parse(time.RFC3339, v.Get("start"))
+	end, _ := time.Parse(time.RFC3339, v.Get("end"))
 	request := WorkloadRequest{
 		GroupBy: uniq(v["groupby"]),
 		OderBy:  v.Get("orderby"),
-		Start:   v.Get("start"),
-		End:     v.Get("end"),
+		Start:   start,
+		End:     end,
 		Range:   v.Get("range"),
 	}
 	if len(request.GroupBy) == 0 {
 		request.GroupBy = queries.AllowedGroupBy()
 	}
-	if request.Start != "" && request.End != "" {
-		request.Range = ""
-	} else if request.Range != "" {
-		request.Start = ""
-		request.End = ""
-	}
 	return request
-}
-
-func formatData(v interface{}) string {
-	switch v := v.(type) {
-	case float64:
-		return fmt.Sprintf("%.2f", v) // adjust precision as needed
-	// add more cases here for other types if needed1
-	default:
-		return fmt.Sprint(v)
-	}
 }
 
 func uniq(data []string) []string {
