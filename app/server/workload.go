@@ -131,6 +131,34 @@ func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
 	return r.Link()
 }
 
+func (r WorkloadRequest) LinkPrev() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	if start.IsZero() || end.IsZero() {
+		return r.Link()
+	}
+	r = r.Clone()
+	dur := -end.Sub(start)
+	r.Start = start.Add(dur).Format(time.RFC3339)
+	r.End = end.Add(dur).Format(time.RFC3339)
+	r.Range = ""
+	return r.Link()
+}
+
+func (r WorkloadRequest) LinkNext() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	if start.IsZero() || end.IsZero() {
+		return r.Link()
+	}
+	r = r.Clone()
+	dur := end.Sub(start)
+	r.Start = start.Add(dur).Format(time.RFC3339)
+	r.End = end.Add(dur).Format(time.RFC3339)
+	r.Range = ""
+	return r.Link()
+}
+
 func (r WorkloadRequest) LinkToggleOrder(col string) string {
 	if !queries.Contains(queries.AllowedSortBy(), col) {
 		return ""
@@ -209,21 +237,38 @@ func (r WorkloadRequest) Link() string {
 	return u.String()
 }
 
+func (r WorkloadRequest) StartDate() time.Time {
+	if r.Range != "" {
+		start, _, _ := rangeToStartEnd(r.Range)
+		return start
+	}
+	t, _ := time.Parse(time.RFC3339, r.Start)
+	return t
+}
+
+func (r WorkloadRequest) EndDate() time.Time {
+	if r.Range != "" {
+		_, end, _ := rangeToStartEnd(r.Range)
+		return end
+	}
+	t, _ := time.Parse(time.RFC3339, r.End)
+	return t
+}
+
 func (r WorkloadRequest) StartValue() string {
-	return RFC3339ToHTMLLocalDateTime(r.Start)
+	if r.Range != "" {
+		start, _, _ := rangeToStartEnd(r.Range)
+		return start.Format(time.RFC3339)
+	}
+	return r.Start
 }
 
 func (r WorkloadRequest) EndValue() string {
-	return RFC3339ToHTMLLocalDateTime(r.End)
-}
-
-func RFC3339ToHTMLLocalDateTime(rfc339 string) string {
-	t, err := time.Parse(time.RFC3339, rfc339)
-	if err != nil {
-		return ""
+	if r.Range != "" {
+		_, end, _ := rangeToStartEnd(r.Range)
+		return end.Format(time.RFC3339)
 	}
-	// "datetime-local" input type requires RFC3339 format without timezone
-	return t.Format("2006-01-02T15:04")
+	return r.End
 }
 
 func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +297,6 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 			{Label: "1d", Value: "24h"},
 			{Label: "7d", Value: "168h"},
 			{Label: "30d", Value: "720h"},
-			{Label: "custom", Value: ""},
 		},
 	})
 }
@@ -267,6 +311,12 @@ func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
 	}
 	if len(request.GroupBy) == 0 {
 		request.GroupBy = queries.AllowedGroupBy()
+	}
+	if request.Start != "" && request.End != "" {
+		request.Range = ""
+	} else if request.Range != "" {
+		request.Start = ""
+		request.End = ""
 	}
 	return request
 }
