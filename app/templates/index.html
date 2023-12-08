@@ -8,24 +8,34 @@
     <script src="/assets/bootstrap.min.js"></script>
     <link rel="stylesheet" href="/assets/flatpickr.min.css">
     <script src="/assets/flatpickr.js"></script>
+    <style>
+        [hx-get] {
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
 <div class="container-fluid" hx-target="body" hx-push-url="true" hx-params="none">
-    <div class="row justify-content-start">
-        <div class="col-1">
+    <div style="display: flex">
+        <div class="mx-2">
             <label>Group by</label>
             {{ range .GroupByOptions }}
                 <div>
-                    <input type="checkbox" id="group-{{ . }}"
+                    <input type="checkbox"
+                           id="group-{{ . }}"
                            {{ if $.Request.IsGroupSelected . }}checked{{ end }}
-                           hx-get="{{ $.Request.LinkToggleGroup . }}"/>
-                    <label for="group-{{ . }}">{{ . }}</label>
+                           hx-get="{{ $.Request.LinkToggleGroup . }}"
+                           class="form-check-input"
+                    />
+                    <label class="form-check-label"
+                           for="group-{{ . }}"
+                    >{{ . }}</label>
                 </div>
             {{ end }}
         </div>
-        <div class="col">
+        <div class="mx-2">
             <label>Time Range</label>
-            <fieldset  style="max-width: 450px">
+            <fieldset style="max-width: 450px">
                 <div class="input-group">
                     <button class="btn btn-primary" hx-get="{{ $.Request.LinkPrev }}">&larr;</button>
                     <input class="flatpickr form-control" id="start-date" value="{{.Request.StartValue}}"/>
@@ -85,23 +95,23 @@
         </div>
     </div>
 
-    <table class="table table-striped">
+    <table class="table table-striped table-sm mt-3 fs-6" style="line-height: 1">
         <thead>
-        <tr>
-            {{ range .AggData.Columns }}
-                {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
-                <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}"
-                        {{ end }}>
-                    {{ . }}
-                    {{ if $.Request.IsOrderAsc . }}
-                        <span>&#x25B2;</span>
-                    {{ end }}
-                    {{ if $.Request.IsOrderDesc . }}
-                        <span>&#x25BC;</span>
-                    {{ end }}
-                </th>
-            {{ end }}
-        </tr>
+            <tr>
+                {{ range .AggData.Columns }}
+                    {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
+                    <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}"
+                            {{ end }}>
+                        {{ . }}
+                        {{ if $.Request.IsOrderAsc . }}
+                            <span>&#x25B2;</span>
+                        {{ end }}
+                        {{ if $.Request.IsOrderDesc . }}
+                            <span>&#x25BC;</span>
+                        {{ end }}
+                    </th>
+                {{ end }}
+            </tr>
         </thead>
         <tbody>
         {{range .AggData.Rows}}
@@ -113,11 +123,32 @@
         {{end}}
         </tbody>
     </table>
-    <h3>SQL Query</h3>
-    <textarea rows="10" cols="140">
-{{ .AggData.SQLQuery }}
-        {{ range .AggData.SQLQueryArgs }}{{ . }}{{ end }}
-</textarea>
+    <h5>Query</h5>
+    <div class="form-floating">
+        <textarea
+                class="form-control form-control-sm"
+                id="sql-query"
+                placeholder="query"
+                style="height: 150px"
+                readonly
+        >{{ .AggData.SQLQuery }}</textarea>
+        <label for="sql-query">SQL</label>
+    </div>
+    {{ range $index, $value := .AggData.SQLQueryArgs }}
+        {{ $argIndex := add $index 1 }}
+        {{ $inputID := print "sql-arg" $argIndex $}}
+        <div class="form-floating my-2">
+            <input
+                    type="text"
+                    class="form-control form-control-sm"
+                    id="{{ $inputID }}"
+                    placeholder="$"
+                    value="{{ $value }}"
+                    readonly
+            >
+            <label for="{{ $inputID }}">${{ $argIndex }}</label>
+        </div>
+    {{ end }}
 </div>
 </body>
 </html>
