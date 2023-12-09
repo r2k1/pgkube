@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
+
 	"github.com/r2k1/pgkube/app/queries"
 )
 
@@ -20,6 +22,22 @@ type HomeTemplateData struct {
 type TimeRangeOptions struct {
 	Label string
 	Value string
+}
+
+func (t *TimeRangeOptions) StartDate() string {
+	start, _, _ := rangeToStartEnd(t.Value)
+	if start.IsZero() {
+		return ""
+	}
+	return start.Format(time.RFC3339)
+}
+
+func (t *TimeRangeOptions) EndDate() string {
+	_, end, _ := rangeToStartEnd(t.Value)
+	if end.IsZero() {
+		return ""
+	}
+	return end.Format(time.RFC3339)
 }
 
 type WorkloadRequest struct {
@@ -50,6 +68,9 @@ func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
 		if err != nil {
 			return queries.WorkloadAggRequest{}, err
 		}
+	} else {
+		start = r.Start
+		end = r.End
 	}
 	return queries.WorkloadAggRequest{
 		GroupBy: r.GroupBy,
@@ -262,7 +283,9 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderFunc(w, "index.html", &HomeTemplateData{
+	w.Header().Set("HX-Replace-Url", workloadReq.Link())
+
+	s.renderFunc(w, "index.gohtml", &HomeTemplateData{
 		Request:        workloadReq,
 		AggData:        aggData,
 		GroupByOptions: queries.AllowedGroupBy(),
@@ -278,19 +301,25 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
-	start, _ := time.Parse(time.RFC3339, v.Get("start"))
-	end, _ := time.Parse(time.RFC3339, v.Get("end"))
-	request := WorkloadRequest{
-		GroupBy: uniq(v["groupby"]),
-		OderBy:  v.Get("orderby"),
-		Start:   start,
-		End:     end,
-		Range:   v.Get("range"),
+	result := WorkloadRequest{}
+	result.Range = v.Get("range")
+	if result.Range == "undefined" {
+		result.Range = ""
 	}
-	if len(request.GroupBy) == 0 {
-		request.GroupBy = queries.AllowedGroupBy()
+	if result.Range == "" {
+		result.Start, _ = time.Parse(time.RFC3339, v.Get("start"))
+		result.End, _ = time.Parse(time.RFC3339, v.Get("end"))
 	}
-	return request
+
+	result.GroupBy = lo.Filter(v["groupby"], func(item string, index int) bool {
+		return item != "" && item != "undefined"
+	})
+	result.GroupBy = lo.Uniq(result.GroupBy)
+	result.OderBy = v.Get("orderby")
+	if len(result.GroupBy) == 0 {
+		result.GroupBy = queries.AllowedGroupBy()
+	}
+	return result
 }
 
 func uniq(data []string) []string {
