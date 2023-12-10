@@ -81,7 +81,8 @@ func rangeToStartEnd(rangeStr string) (time.Time, time.Time, error) {
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("invalid range: %w", err)
 	}
-	end := time.Now().UTC().Truncate(time.Hour)
+	now := time.Now().UTC()
+	end := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
 	start := end.Add(-duration)
 	return start, end, nil
 }
@@ -95,7 +96,7 @@ func (r WorkloadRequest) IsColSelected(col string) bool {
 	return false
 }
 
-func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
+func (r WorkloadRequest) LinkRange(rangeValue string) string {
 	r = r.Clone()
 	r.Range = rangeValue
 	return r.Link()
@@ -137,6 +138,18 @@ func (r WorkloadRequest) LinkToggleOrder(col string) string {
 		}
 	} else {
 		r.OderBy = col
+	}
+	return r.Link()
+}
+
+func (r WorkloadRequest) LinkToggleCol(col string) string {
+	r = r.Clone()
+	if r.IsColSelected(col) {
+		r.Cols = lo.Filter(r.Cols, func(item string, _ int) bool {
+			return item != col
+		})
+	} else {
+		r.Cols = append(r.Cols, col)
 	}
 	return r.Link()
 }
@@ -207,6 +220,12 @@ func (r WorkloadRequest) EndValue() string {
 	return timeToString(r.EndDate())
 }
 
+func (r WorkloadRequest) Labels() []string {
+	return lo.Filter(r.Cols, func(item string, _ int) bool {
+		return strings.HasPrefix(item, "label_")
+	})
+}
+
 func timeToString(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -262,12 +281,19 @@ func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
 	if result.Range == "" {
 		result.Start, _ = time.Parse(time.RFC3339, v.Get("start"))
 		result.End, _ = time.Parse(time.RFC3339, v.Get("end"))
+		if result.Start.IsZero() || result.End.IsZero() {
+			result.Start = time.Time{}
+			result.End = time.Time{}
+			result.Range = "24h"
+		}
 	}
 	result.Cols = lo.Filter(v["col"], func(item string, index int) bool {
 		return item != "" && item != "undefined"
 	})
 	result.Cols = lo.Uniq(result.Cols)
 	result.OderBy = v.Get("orderby")
+	result.Start = TruncateHour(result.Start)
+	result.End = TruncateHour(result.End)
 	return result
 }
 
@@ -281,4 +307,8 @@ func uniq(data []string) []string {
 		}
 	}
 	return result
+}
+
+func TruncateHour(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
 }
