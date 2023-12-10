@@ -13,7 +13,7 @@
           hx-get="/workload"
           hx-select="#data"
           hx-trigger="change from:.trigger-update"
-          hx-params="groupby,range,start,end"
+          hx-params="range,start,end,col"
           hx-indicator="#indicator"
           hx-sync="this:replace"
           hx-disabled-elt=".trigger-update"
@@ -23,18 +23,18 @@
         </div>
         <div style="display: flex">
             <div class="mx-2">
-                <label>Group by</label>
-                {{ range .GroupByOptions }}
+                <label>Columns</label>
+                {{ range .Cols }}
                     <div>
                         <input type="checkbox"
-                               name="groupby"
+                               name="col"
                                value="{{ . }}"
-                               id="groupby-{{ . }}"
-                               {{ if $.Request.IsGroupSelected . }}checked{{ end }}
+                               id="col-{{ . }}"
+                               {{ if $.Request.IsColSelected . }}checked{{ end }}
                                class="form-check-input trigger-update"
                         />
                         <label class="form-check-label"
-                               for="groupby-{{ . }}"
+                               for="col-{{ . }}"
                         >{{ . }}</label>
                     </div>
                 {{ end }}
@@ -160,7 +160,6 @@
         let start = new Date(document.getElementById('start').value);
         let end = new Date(document.getElementById('end').value);
         let diff = end - start;
-        debugger;
         start.setMilliseconds(diff);
         end.setMilliseconds(diff);
         setStart(start);

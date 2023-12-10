@@ -12,13 +12,6 @@ import (
 	"github.com/r2k1/pgkube/app/queries"
 )
 
-type HomeTemplateData struct {
-	Request          WorkloadRequest
-	AggData          *queries.WorkloadAggResult
-	GroupByOptions   []string
-	TimeRangeOptions []TimeRangeOptions
-}
-
 type TimeRangeOptions struct {
 	Label string
 	Value string
@@ -41,18 +34,18 @@ func (t *TimeRangeOptions) EndDate() string {
 }
 
 type WorkloadRequest struct {
-	GroupBy []string
-	OderBy  string
-	Range   string
-	Start   time.Time
-	End     time.Time
+	Cols   []string
+	OderBy string
+	Range  string
+	Start  time.Time
+	End    time.Time
 }
 
 func DefaultRequest() WorkloadRequest {
 	return WorkloadRequest{
-		GroupBy: []string{"namespace", "controller_kind", "controller_name"},
-		OderBy:  "namespace",
-		Range:   "168h",
+		Cols:   []string{"namespace", "controller_kind", "controller_name"},
+		OderBy: "namespace",
+		Range:  "168h",
 	}
 }
 
@@ -73,10 +66,10 @@ func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
 		end = r.End
 	}
 	return queries.WorkloadAggRequest{
-		GroupBy: r.GroupBy,
-		OderBy:  r.OderBy,
-		Start:   start,
-		End:     end,
+		Cols:   r.Cols,
+		OderBy: r.OderBy,
+		Start:  start,
+		End:    end,
 	}, nil
 }
 
@@ -93,40 +86,13 @@ func rangeToStartEnd(rangeStr string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
-func (r WorkloadRequest) IsGroupSelected(group string) bool {
-	for _, g := range r.GroupBy {
-		if g == group {
+func (r WorkloadRequest) IsColSelected(col string) bool {
+	for _, g := range r.Cols {
+		if g == col {
 			return true
 		}
 	}
 	return false
-}
-
-func (r WorkloadRequest) LinkToggleGroup(group string) string {
-	if r.IsGroupSelected(group) {
-		return r.LinkRemoveGroup(group)
-	}
-	return r.LinkAddGroup(group)
-}
-
-func (r WorkloadRequest) LinkAddGroup(groupBy string) string {
-	r = r.Clone()
-	r.GroupBy = append(r.GroupBy, groupBy)
-	return r.Link()
-}
-
-func (r WorkloadRequest) LinkRemoveGroup(groupBy string) string {
-	r = r.Clone()
-	for i, g := range r.GroupBy {
-		if g == groupBy {
-			r.GroupBy = append(r.GroupBy[:i], r.GroupBy[i+1:]...)
-			break
-		}
-	}
-	if r.OderBy == groupBy {
-		r.OderBy = ""
-	}
-	return r.Link()
 }
 
 func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
@@ -158,7 +124,7 @@ func (r WorkloadRequest) LinkNext() string {
 }
 
 func (r WorkloadRequest) LinkToggleOrder(col string) string {
-	if !queries.Contains(queries.AllowedSortBy(), col) {
+	if !queries.Contains(queries.Cols(), col) {
 		return ""
 	}
 	r = r.Clone()
@@ -180,8 +146,8 @@ func (r WorkloadRequest) Clone() WorkloadRequest {
 	copyW := r
 
 	// Deep copy the GroupBy slice
-	copyW.GroupBy = make([]string, len(r.GroupBy))
-	copy(copyW.GroupBy, r.GroupBy)
+	copyW.Cols = make([]string, len(r.Cols))
+	copy(copyW.Cols, r.Cols)
 
 	return copyW
 }
@@ -194,29 +160,9 @@ func (r WorkloadRequest) IsOrderDesc(col string) bool {
 	return r.OderBy == col+" desc"
 }
 
-func (r WorkloadRequest) GroupedByMap() map[string]struct{} {
-	result := make(map[string]struct{})
-	for _, g := range r.GroupBy {
-		result[g] = struct{}{}
-	}
-	return result
-}
-
-func (r WorkloadRequest) AvailableGroupBy() []string {
-	result := make([]string, 0, len(queries.AllowedGroupBy()))
-	groupedBy := r.GroupedByMap()
-	for _, groupBy := range queries.AllowedGroupBy() {
-		if _, ok := groupedBy[groupBy]; ok {
-			continue
-		}
-		result = append(result, groupBy)
-	}
-	return result
-}
-
 func (r WorkloadRequest) Link() string {
 	values := url.Values{
-		"groupby": r.GroupBy,
+		"col": r.Cols,
 	}
 
 	if r.Range != "" {
@@ -285,10 +231,15 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("HX-Replace-Url", workloadReq.Link())
 
-	s.renderFunc(w, "index.gohtml", &HomeTemplateData{
-		Request:        workloadReq,
-		AggData:        aggData,
-		GroupByOptions: queries.AllowedGroupBy(),
+	data := struct {
+		Request          WorkloadRequest
+		AggData          *queries.WorkloadAggResult
+		TimeRangeOptions []TimeRangeOptions
+		Cols             []string
+	}{
+		Request: workloadReq,
+		AggData: aggData,
+		Cols:    queries.Cols(),
 		TimeRangeOptions: []TimeRangeOptions{
 			{Label: "1h", Value: "1h"},
 			{Label: "3h", Value: "3h"},
@@ -297,7 +248,9 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 			{Label: "7d", Value: "168h"},
 			{Label: "30d", Value: "720h"},
 		},
-	})
+	}
+
+	s.renderFunc(w, "index.gohtml", data)
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
@@ -310,15 +263,11 @@ func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
 		result.Start, _ = time.Parse(time.RFC3339, v.Get("start"))
 		result.End, _ = time.Parse(time.RFC3339, v.Get("end"))
 	}
-
-	result.GroupBy = lo.Filter(v["groupby"], func(item string, index int) bool {
+	result.Cols = lo.Filter(v["col"], func(item string, index int) bool {
 		return item != "" && item != "undefined"
 	})
-	result.GroupBy = lo.Uniq(result.GroupBy)
+	result.Cols = lo.Uniq(result.Cols)
 	result.OderBy = v.Get("orderby")
-	if len(result.GroupBy) == 0 {
-		result.GroupBy = queries.AllowedGroupBy()
-	}
 	return result
 }
 

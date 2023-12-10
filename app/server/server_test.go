@@ -13,7 +13,7 @@ import (
 
 func TestServer_HandleWorkload(t *testing.T) {
 	db := test.CreateTestDB(t, "../migrations")
-	handler := NewSrv(queries.New(db), "../templates", "../assets").Handler()
+	handler := NewSrv(queries.New(db), "../templates", "../assets", false).Handler()
 	tests := []struct {
 		path       string
 		statusCode int

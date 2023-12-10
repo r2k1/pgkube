@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,11 +17,7 @@ type Workload struct {
 	Name      string
 }
 
-// poor man immutable slices
-func AllowedGroupBy() []string {
-	return []string{"namespace", "controller_kind", "controller_name", "name", "node_name"}
-}
-func AllowedSortBy() []string {
+func Cols() []string {
 	return []string{
 		"namespace",
 		"controller_kind",
@@ -43,22 +38,10 @@ func AllowedSortBy() []string {
 }
 
 type WorkloadAggRequest struct {
-	GroupBy []string
-	OderBy  string
-	Start   time.Time
-	End     time.Time
-}
-
-func sortGroupBy(data []string) {
-	indexMap := make(map[string]int)
-	for i, v := range AllowedGroupBy() {
-		indexMap[v] = i
-	}
-
-	// Custom sorting function
-	sort.Slice(data, func(i, j int) bool {
-		return indexMap[data[i]] < indexMap[data[j]]
-	})
+	Cols   []string
+	OderBy string
+	Start  time.Time
+	End    time.Time
 }
 
 func Contains(data []string, term string) bool {
@@ -72,45 +55,64 @@ func Contains(data []string, term string) bool {
 
 // nolint:cyclop
 func (w WorkloadAggRequest) Validate() error {
-	for _, g := range w.GroupBy {
-		if !Contains(AllowedGroupBy(), g) {
-			return fmt.Errorf("invalid group by: %s", g)
+	for _, g := range w.Cols {
+		if !Contains(Cols(), g) {
+			return fmt.Errorf("invalid col: %s", g)
 		}
 	}
 
 	orderByCol := strings.TrimPrefix(strings.TrimSuffix(w.OderBy, " desc"), " asc")
-	if !Contains(AllowedSortBy(), orderByCol) {
+	if !Contains(Cols(), orderByCol) {
 		return fmt.Errorf("invalid order by: %s", w.OderBy)
 	}
 	return nil
 }
 
 func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
-	sortGroupBy(req.GroupBy)
 	psq := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	hours := req.End.Sub(req.Start).Hours()
 	if hours < 0 {
 		return "", nil, fmt.Errorf("start time is after end time")
 	}
-
-	cols := append([]string(nil), req.GroupBy...)
-	cols = append(cols,
-		fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2) as request_cpu_cores", hours),
-		fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2) as used_cpu_cores", hours),
-		fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f) as request_memory_bytes", hours),
-		fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f) as used_memory_bytes", hours),
-		fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f) as request_storage_bytes", hours),
-		"round(sum(hours), 2) as hours",
-		"round(sum(cpu_cost)::numeric, 2) as cpu_cost",
-		"round(sum(memory_cost)::numeric, 2) as memory_cost",
-		"round(sum(storage_cost)::numeric, 2) as storage_cost",
-		"round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2) as total_cost",
-	)
-
+	selectMap := map[string]string{
+		"namespace":             "namespace",
+		"controller_kind":       "controller_kind",
+		"controller_name":       "controller_name",
+		"name":                  "name",
+		"node_name":             "node_name",
+		"request_cpu_cores":     fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2) as request_cpu_cores", hours),
+		"used_cpu_cores":        fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2) as used_cpu_cores", hours),
+		"request_memory_bytes":  fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f) as request_memory_bytes", hours),
+		"used_memory_bytes":     fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f) as used_memory_bytes", hours),
+		"request_storage_bytes": fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f) as request_storage_bytes", hours),
+		"hours":                 "round(sum(hours), 2) as hours",
+		"cpu_cost":              "round(sum(cpu_cost)::numeric, 2) as cpu_cost",
+		"memory_cost":           "round(sum(memory_cost)::numeric, 2) as memory_cost",
+		"storage_cost":          "round(sum(storage_cost)::numeric, 2) as storage_cost",
+		"total_cost":            "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2) as total_cost",
+	}
+	groupByCols := map[string]struct{}{
+		"namespace":       {},
+		"controller_kind": {},
+		"controller_name": {},
+		"name":            {},
+		"node_name":       {},
+	}
+	selectStmts := make([]string, 0)
+	groupByStmts := make([]string, 0)
+	// keep column order consistent
+	for _, c := range Cols() {
+		if Contains(req.Cols, c) {
+			selectStmts = append(selectStmts, selectMap[c])
+			if _, ok := groupByCols[c]; ok {
+				groupByStmts = append(groupByStmts, selectMap[c])
+			}
+		}
+	}
 	query := psq.
-		Select(cols...).
-		GroupBy(req.GroupBy...).
+		Select(selectStmts...).
+		GroupBy(groupByStmts...).
 		From("cost_hourly").
 		Where(sq.GtOrEq{"timestamp": req.Start}).
 		Where(sq.Lt{"timestamp": req.End})
