@@ -8,34 +8,90 @@
     <script src="/assets/bootstrap.min.js"></script>
 </head>
 <body>
-<div class="container-fluid">
-    <div
-            hx-target="#content"
-            hx-get="/workload"
-            hx-select="#content"
-            hx-trigger="none"
-            hx-params="none"
-            hx-indicator="#indicator"
-            hx-sync="this:replace"
-            hx-disabled-elt=".disable-during-update"
-            id="content"
-    >
-        <div id="alert-placeholder"></div>
-        <div id="indicator" class="htmx-indicator spinner-border position-fixed right-0" role="status" style="right: 0">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <div style="display: flex">
-            <div class="mx-2">
-                <label>Columns</label>
+<div
+        class="container-fluid"
+        hx-target="this"
+        hx-get="/workload"
+        hx-select="#content"
+        hx-trigger="none"
+        hx-params="none"
+        hx-indicator="#indicator"
+        hx-sync="this:replace"
+        hx-swap="outerHTML"
+        hx-disabled-elt=".disable-during-update"
+        id="content"
+>
+    <div id="alert-placeholder"></div>
+    <div id="indicator" class="htmx-indicator spinner-border position-fixed right-0" role="status" style="right: 0">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <div class="row">
+        <div class="col pt-4" style="max-width: 21em">
+            <div class="input-group my-2">
+                <span class="input-group-text" style="min-width: 4em">From</span>
+                <input
+                        id="start-local"
+                        name="start"
+                        type="datetime-local"
+                        class="disable-during-update local-iso form-control"
+                        iso-date="{{.Request.StartValue}}"
+                />
+            </div>
+            <div class="input-group my-2">
+                <span class="input-group-text" style="min-width: 4em">Until</span>
+                <input
+                        id="end-local"
+                        name="end"
+                        type="datetime-local"
+                        class="disable-during-update local-iso form-control"
+                        iso-date="{{.Request.EndValue}}"
+                />
+            </div>
+            <div class="btn-group my-2 d-flex">
+                <a id="range-prev"
+                   class="btn btn-outline-primary disable-during-update"
+                   hx-get="{{.Request.LinkPrev}}"
+                >Prev {{.Request.Duration }}</a>
+                <a id="range-next"
+                   class="btn btn-outline-primary disable-during-update"
+                   hx-get="{{.Request.LinkNext}}"
+                >Next {{.Request.Duration }}</a>
+            </div>
+            <div class="btn-group my-2 d-flex">
+                {{ range .TimeRangeOptions }}
+                    <input
+                            type="radio"
+                            class="btn-check form-check-input disable-during-update"
+                            id="range-{{ .Value }}"
+                            {{ if eq .Value $.Request.Range }}checked{{ end }}
+                            name="range"
+                            hx-get="{{ $.Request.LinkRange .Value }}"
+                    >
+                    <label
+                            class="btn btn-outline-primary" for="range-{{ .Value }}"
+                            class="form-label"
+                    >{{.Label}}</label>
+                {{ end }}
+            </div>
+            <div class="">
+                <form id="add-label"
+                      onsubmit="event.preventDefault(); addLabel()"
+                      class="my-2"
+                >
+                    <div class="input-group d-flex">
+                        <input type="text" name="add-label" class="form-control" id="add-label-name"/>
+                        <button id="add-label-btn" class="btn btn-outline-primary disable-during-update">Add label</button>
+                    </div>
+                </form>
                 {{ range .Cols }}
-                    <div>
+                    <div class="form-check">
                         <input
+                                class="form-check-input disable-during-update"
                                 type="checkbox"
                                 name="col"
                                 value="{{ . }}"
                                 id="col-{{ . }}"
                                 {{ if $.Request.IsColSelected . }}checked{{ end }}
-                                class="form-check-input disable-during-update"
                                 hx-get="{{ $.Request.LinkToggleCol . }}"
                         />
                         <label
@@ -45,14 +101,14 @@
                     </div>
                 {{ end }}
                 {{ range .Request.Labels }}
-                    <div>
+                    <div class="form-check">
                         <input
+                                class="form-check-input disable-during-update"
                                 type="checkbox"
                                 name="col"
                                 value="{{ . }}"
-                                id="col-label-{{ . }}"
+                                id="col-{{ . }}"
                                 checked
-                                class="form-check-input disable-during-update"
                                 hx-get="{{ $.Request.LinkToggleCol . }}"
                         />
                         <label
@@ -61,60 +117,13 @@
                         >{{ . }}</label>
                     </div>
                 {{ end}}
-                <form id="add-label" onsubmit="event.preventDefault(); addLabel()">
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text">Label</span>
-                        <input type="text" name="add-label" class="form-control" id="add-label-name"/>
-                        <button id="add-label-btn" class="btn btn-primary disable-during-update">Add</button>
-                    </div>
-                </form>
+            </div>
 
-            </div>
-            <div class="mx-2">
-                <label>Time Range</label>
-                <fieldset style="max-width: 500px">
-                    <div class="input-group">
-                        <a id="range-prev" class="btn btn-primary disable-during-update" hx-get="{{.Request.LinkPrev}}">&larr;</a>
-                        <input
-                                id="start-local"
-                                name="start"
-                                type="datetime-local"
-                                class="disable-during-update local-iso form-control"
-                                iso-date="{{.Request.StartValue}}"
-                        />
-                        <span class="input-group-text">To</span>
-                        <input
-                                id="end-local"
-                                name="end"
-                                type="datetime-local"
-                                class="disable-during-update local-iso form-control"
-                                iso-date="{{.Request.EndValue}}"
-                        />
-                        <a id="range-next" class="btn btn-primary disable-during-update" hx-get="{{.Request.LinkNext}}">&rarr;</a>
-                    </div>
-                </fieldset>
-                <div class="mt-2">
-                    <div class="btn-group" role="group" aria-label="Basic example">
-                        {{ range .TimeRangeOptions }}
-                            <input
-                                    type="radio"
-                                    class="btn-check form-check-input disable-during-update"
-                                    id="range-{{ .Value }}"
-                                    {{ if eq .Value $.Request.Range }}checked{{ end }}
-                                    name="range"
-                                    hx-get="{{ $.Request.LinkRange .Value }}"
-                            >
-                            <label
-                                    class="btn btn-primary" for="range-{{ .Value }}"
-                                    class="form-label"
-                            >{{.Label}}</label>
-                        {{ end }}
-                    </div>
-                </div>
-            </div>
         </div>
-        <div id="data">
-            {{ template "data.gohtml" . }}
+        <div class="col">
+            <div id="data">
+                {{ template "data.gohtml" . }}
+            </div>
         </div>
     </div>
 </div>

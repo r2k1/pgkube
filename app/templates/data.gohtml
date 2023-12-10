@@ -3,7 +3,7 @@
     <tr>
         {{ range .AggData.Columns }}
         {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
-        <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" hx-select="#data" hx-target="#data"
+        <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" style="cursor: pointer"
         {{ end }}>
         {{ . }}
         {{ if $.Request.IsOrderAsc . }}
@@ -26,30 +26,3 @@
     {{end}}
     </tbody>
 </table>
-
-<h5>Query</h5>
-<div class="form-floating">
-        <textarea
-                class="form-control form-control-sm"
-                id="sql-query"
-                placeholder="query"
-                style="height: 150px"
-                readonly
-        >{{ .AggData.SQLQuery }}</textarea>
-    <label for="sql-query">SQL</label>
-</div>
-{{ range $index, $value := .AggData.SQLQueryArgs }}
-{{ $argIndex := add $index 1 }}
-{{ $inputID := print "sql-arg" $argIndex $}}
-<div class="form-floating my-2">
-    <input
-            type="text"
-            class="form-control form-control-sm"
-            id="{{ $inputID }}"
-            placeholder="$"
-            value="{{ $value }}"
-            readonly
-    >
-    <label for="{{ $inputID }}">${{ $argIndex }}</label>
-</div>
-{{ end }}

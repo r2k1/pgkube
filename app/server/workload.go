@@ -113,6 +113,13 @@ func (r WorkloadRequest) LinkPrev() string {
 	return r.Link()
 }
 
+func (r WorkloadRequest) Duration() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	hours := int(end.Sub(start).Hours())
+	return fmt.Sprintf("%dh", hours)
+}
+
 func (r WorkloadRequest) LinkNext() string {
 	start := r.StartDate()
 	end := r.EndDate()
@@ -260,7 +267,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		AggData: aggData,
 		Cols:    queries.Cols(),
 		TimeRangeOptions: []TimeRangeOptions{
-			{Label: "1h", Value: "1h"},
+			{Label: "Last 1h", Value: "1h"},
 			{Label: "3h", Value: "3h"},
 			{Label: "12h", Value: "12h"},
 			{Label: "1d", Value: "24h"},
