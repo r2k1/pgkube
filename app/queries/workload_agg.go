@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -57,7 +58,7 @@ func Contains(data []string, term string) bool {
 func (w WorkloadAggRequest) Validate() error {
 	for _, g := range w.Cols {
 		if !Contains(Cols(), g) {
-			return fmt.Errorf("invalid col: %s", g)
+			return fmt.Errorf("invalid column: %s", g)
 		}
 	}
 
@@ -67,6 +68,8 @@ func (w WorkloadAggRequest) Validate() error {
 	}
 	return nil
 }
+
+var labelRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$`)
 
 func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 	psq := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -109,6 +112,18 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 				groupByStmts = append(groupByStmts, selectMap[c])
 			}
 		}
+	}
+	for _, c := range req.Cols {
+		if !strings.HasPrefix(c, "label_") {
+			continue
+		}
+		label := strings.TrimPrefix(c, "label_")
+		// IMPORTANT. Protection from SQL injection
+		if !labelRegex.MatchString(label) {
+			return "", nil, fmt.Errorf("invalid label: %s", label)
+		}
+		selectStmts = append(selectStmts, fmt.Sprintf("coalesce(labels->>'%s', '') as %s", label, c))
+		groupByStmts = append(groupByStmts, fmt.Sprintf("labels->>'%s'", label))
 	}
 	query := psq.
 		Select(selectStmts...).
