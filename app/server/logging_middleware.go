@@ -52,7 +52,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		// Log using structured logging
 		slog.Info("HTTP",
 			slog.String("method", r.Method),
-			slog.String("url", r.URL.Path),
+			slog.String("url", r.URL.String()),
 			slog.Int("status", customWriter.statusCode),
 			slog.Int("responseSize", customWriter.bytesWritten),
 			slog.Duration("duration", duration),

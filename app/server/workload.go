@@ -7,62 +7,67 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
+
 	"github.com/r2k1/pgkube/app/queries"
 )
-
-type HomeTemplateData struct {
-	Request          WorkloadRequest
-	AggData          *queries.WorkloadAggResult
-	GroupByOptions   []string
-	TimeRangeOptions []TimeRangeOptions
-}
 
 type TimeRangeOptions struct {
 	Label string
 	Value string
 }
 
+func (t *TimeRangeOptions) StartDate() string {
+	start, _, _ := rangeToStartEnd(t.Value)
+	if start.IsZero() {
+		return ""
+	}
+	return start.Format(time.RFC3339)
+}
+
+func (t *TimeRangeOptions) EndDate() string {
+	_, end, _ := rangeToStartEnd(t.Value)
+	if end.IsZero() {
+		return ""
+	}
+	return end.Format(time.RFC3339)
+}
+
 type WorkloadRequest struct {
-	GroupBy []string
-	OderBy  string
-	Range   string
-	Start   string
-	End     string
+	Cols   []string
+	OderBy string
+	Range  string
+	Start  time.Time
+	End    time.Time
 }
 
 func DefaultRequest() WorkloadRequest {
 	return WorkloadRequest{
-		GroupBy: []string{"namespace", "controller_kind", "controller_name"},
-		OderBy:  "namespace",
-		Range:   "168h",
+		Cols:   []string{"namespace", "controller_kind", "controller_name", "request_cpu_cores", "used_cpu_cores", "request_memory_bytes", "used_memory_bytes", "total_cost"},
+		OderBy: "namespace",
+		Range:  "168h",
 	}
 }
 
 func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
-	if r.Range != "" && (r.Start != "" || r.End != "") {
+	if r.Range != "" && (!r.Start.IsZero() || !r.End.IsZero()) {
 		return queries.WorkloadAggRequest{}, fmt.Errorf("range and start/end are mutually exclusive")
 	}
 	var start, end time.Time
-	if r.Start == "" || r.End == "" {
+
+	if r.Start.IsZero() || r.End.IsZero() {
 		var err error
 		start, end, err = rangeToStartEnd(r.Range)
 		if err != nil {
 			return queries.WorkloadAggRequest{}, err
 		}
 	} else {
-		var err error
-		start, err = time.Parse(time.RFC3339, r.Start)
-		if err != nil {
-			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid start: %w", err)
-		}
-		end, err = time.Parse(time.RFC3339, r.End)
-		if err != nil {
-			return queries.WorkloadAggRequest{}, fmt.Errorf("invalid end: %w", err)
-		}
+		start = r.Start
+		end = r.End
 	}
 	return queries.WorkloadAggRequest{
-		GroupBy: r.GroupBy,
-		OderBy:  r.OderBy,
+		Cols:    r.Cols,
+		OrderBy: r.OderBy,
 		Start:   start,
 		End:     end,
 	}, nil
@@ -76,63 +81,58 @@ func rangeToStartEnd(rangeStr string) (time.Time, time.Time, error) {
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("invalid range: %w", err)
 	}
-	end := time.Now().UTC().Truncate(time.Hour)
+	now := time.Now().UTC()
+	end := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.UTC)
 	start := end.Add(-duration)
 	return start, end, nil
 }
 
-func (r WorkloadRequest) IsGroupSelected(group string) bool {
-	for _, g := range r.GroupBy {
-		if g == group {
+func (r WorkloadRequest) IsColSelected(col string) bool {
+	for _, g := range r.Cols {
+		if g == col {
 			return true
 		}
 	}
 	return false
 }
 
-func (r WorkloadRequest) LinkToggleGroup(group string) string {
-	if r.IsGroupSelected(group) {
-		return r.LinkRemoveGroup(group)
-	}
-	return r.LinkAddGroup(group)
-}
-
-func (r WorkloadRequest) LinkAddGroup(groupBy string) string {
+func (r WorkloadRequest) LinkRange(rangeValue string) string {
 	r = r.Clone()
-	r.GroupBy = append(r.GroupBy, groupBy)
-	return r.Link()
-}
-
-func (r WorkloadRequest) LinkRemoveGroup(groupBy string) string {
-	r = r.Clone()
-	for i, g := range r.GroupBy {
-		if g == groupBy {
-			r.GroupBy = append(r.GroupBy[:i], r.GroupBy[i+1:]...)
-			break
-		}
-	}
-	if r.OderBy == groupBy {
-		r.OderBy = ""
-	}
-	return r.Link()
-}
-
-func (r WorkloadRequest) LinkSetRange(rangeValue string) string {
-	r = r.Clone()
-	if rangeValue == "" {
-		start, end, _ := rangeToStartEnd(r.Range)
-		r.Start = start.Format(time.RFC3339)
-		r.End = end.Format(time.RFC3339)
-	} else {
-		r.Start = ""
-		r.End = ""
-	}
 	r.Range = rangeValue
 	return r.Link()
 }
 
+func (r WorkloadRequest) LinkPrev() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	r = r.Clone()
+	dur := -end.Sub(start)
+	r.Start = start.Add(dur)
+	r.End = end.Add(dur)
+	r.Range = ""
+	return r.Link()
+}
+
+func (r WorkloadRequest) Duration() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	hours := int(end.Sub(start).Hours())
+	return fmt.Sprintf("%dh", hours)
+}
+
+func (r WorkloadRequest) LinkNext() string {
+	start := r.StartDate()
+	end := r.EndDate()
+	r = r.Clone()
+	dur := end.Sub(start)
+	r.Start = start.Add(dur)
+	r.End = end.Add(dur)
+	r.Range = ""
+	return r.Link()
+}
+
 func (r WorkloadRequest) LinkToggleOrder(col string) string {
-	if !queries.Contains(queries.AllowedSortBy(), col) {
+	if !queries.Contains(queries.Cols(), col) {
 		return ""
 	}
 	r = r.Clone()
@@ -149,13 +149,25 @@ func (r WorkloadRequest) LinkToggleOrder(col string) string {
 	return r.Link()
 }
 
+func (r WorkloadRequest) LinkToggleCol(col string) string {
+	r = r.Clone()
+	if r.IsColSelected(col) {
+		r.Cols = lo.Filter(r.Cols, func(item string, _ int) bool {
+			return item != col
+		})
+	} else {
+		r.Cols = append(r.Cols, col)
+	}
+	return r.Link()
+}
+
 func (r WorkloadRequest) Clone() WorkloadRequest {
 	// Create a new instance of WorkloadAggRequest
 	copyW := r
 
 	// Deep copy the GroupBy slice
-	copyW.GroupBy = make([]string, len(r.GroupBy))
-	copy(copyW.GroupBy, r.GroupBy)
+	copyW.Cols = make([]string, len(r.Cols))
+	copy(copyW.Cols, r.Cols)
 
 	return copyW
 }
@@ -168,38 +180,20 @@ func (r WorkloadRequest) IsOrderDesc(col string) bool {
 	return r.OderBy == col+" desc"
 }
 
-func (r WorkloadRequest) GroupedByMap() map[string]struct{} {
-	result := make(map[string]struct{})
-	for _, g := range r.GroupBy {
-		result[g] = struct{}{}
-	}
-	return result
-}
-
-func (r WorkloadRequest) AvailableGroupBy() []string {
-	result := make([]string, 0, len(queries.AllowedGroupBy()))
-	groupedBy := r.GroupedByMap()
-	for _, groupBy := range queries.AllowedGroupBy() {
-		if _, ok := groupedBy[groupBy]; ok {
-			continue
-		}
-		result = append(result, groupBy)
-	}
-	return result
-}
-
 func (r WorkloadRequest) Link() string {
 	values := url.Values{
-		"groupby": r.GroupBy,
+		"col": r.Cols,
 	}
-	if r.Start != "" {
-		values.Set("start", r.Start)
-	}
-	if r.End != "" {
-		values.Set("end", r.End)
-	}
+
 	if r.Range != "" {
 		values.Set("range", r.Range)
+	} else {
+		if !r.Start.IsZero() {
+			values.Set("start", r.StartValue())
+		}
+		if !r.End.IsZero() {
+			values.Set("end", r.EndValue())
+		}
 	}
 	if r.OderBy != "" {
 		values.Set("orderby", r.OderBy)
@@ -209,24 +203,48 @@ func (r WorkloadRequest) Link() string {
 	return u.String()
 }
 
+func (r WorkloadRequest) StartDate() time.Time {
+	if r.Range != "" {
+		start, _, _ := rangeToStartEnd(r.Range)
+		return start
+	}
+	return r.Start
+}
+
+func (r WorkloadRequest) EndDate() time.Time {
+	if r.Range != "" {
+		_, end, _ := rangeToStartEnd(r.Range)
+		return end
+	}
+	return r.End
+}
+
 func (r WorkloadRequest) StartValue() string {
-	return RFC3339ToHTMLLocalDateTime(r.Start)
+	return timeToString(r.StartDate())
 }
 
 func (r WorkloadRequest) EndValue() string {
-	return RFC3339ToHTMLLocalDateTime(r.End)
+	return timeToString(r.EndDate())
 }
 
-func RFC3339ToHTMLLocalDateTime(rfc339 string) string {
-	t, err := time.Parse(time.RFC3339, rfc339)
-	if err != nil {
+func (r WorkloadRequest) Labels() []string {
+	return lo.Filter(r.Cols, func(item string, _ int) bool {
+		return strings.HasPrefix(item, "label_")
+	})
+}
+
+func timeToString(t time.Time) string {
+	if t.IsZero() {
 		return ""
 	}
-	// "datetime-local" input type requires RFC3339 format without timezone
-	return t.Format("2006-01-02T15:04")
+	return t.Format(time.RFC3339)
 }
 
 func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.Query()) == 0 {
+		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
+		return
+	}
 	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
 
 	aggRequest, err := workloadReq.ToQuery()
@@ -241,54 +259,55 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderFunc(w, "index.html", &HomeTemplateData{
-		Request:        workloadReq,
-		AggData:        aggData,
-		GroupByOptions: queries.AllowedGroupBy(),
+	w.Header().Set("HX-Replace-Url", workloadReq.Link())
+
+	data := struct {
+		Request          WorkloadRequest
+		AggData          *queries.WorkloadAggResult
+		TimeRangeOptions []TimeRangeOptions
+		Cols             []string
+	}{
+		Request: workloadReq,
+		AggData: aggData,
+		Cols:    queries.Cols(),
 		TimeRangeOptions: []TimeRangeOptions{
-			{Label: "1h", Value: "1h"},
+			{Label: "Last 1h", Value: "1h"},
 			{Label: "3h", Value: "3h"},
 			{Label: "12h", Value: "12h"},
 			{Label: "1d", Value: "24h"},
 			{Label: "7d", Value: "168h"},
 			{Label: "30d", Value: "720h"},
-			{Label: "custom", Value: ""},
 		},
-	})
+	}
+
+	s.renderFunc(w, "index.gohtml", data)
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
-	request := WorkloadRequest{
-		GroupBy: uniq(v["groupby"]),
-		OderBy:  v.Get("orderby"),
-		Start:   v.Get("start"),
-		End:     v.Get("end"),
-		Range:   v.Get("range"),
+	result := WorkloadRequest{}
+	result.Range = v.Get("range")
+	if result.Range == "undefined" {
+		result.Range = ""
 	}
-	if len(request.GroupBy) == 0 {
-		request.GroupBy = queries.AllowedGroupBy()
-	}
-	return request
-}
-
-func formatData(v interface{}) string {
-	switch v := v.(type) {
-	case float64:
-		return fmt.Sprintf("%.2f", v) // adjust precision as needed
-	// add more cases here for other types if needed1
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-func uniq(data []string) []string {
-	var result []string
-	seen := make(map[string]bool)
-	for _, d := range data {
-		if !seen[d] {
-			result = append(result, d)
-			seen[d] = true
+	if result.Range == "" {
+		result.Start, _ = time.Parse(time.RFC3339, v.Get("start"))
+		result.End, _ = time.Parse(time.RFC3339, v.Get("end"))
+		if result.Start.IsZero() || result.End.IsZero() {
+			result.Start = time.Time{}
+			result.End = time.Time{}
+			result.Range = "24h"
 		}
 	}
+	result.Cols = lo.Filter(v["col"], func(item string, index int) bool {
+		return item != "" && item != "undefined"
+	})
+	result.Cols = lo.Uniq(result.Cols)
+	result.OderBy = v.Get("orderby")
+	result.Start = TruncateHour(result.Start)
+	result.End = TruncateHour(result.End)
 	return result
+}
+
+func TruncateHour(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
 }

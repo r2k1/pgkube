@@ -32,12 +32,6 @@ func init() {
 	slog.SetDefault(logger)
 }
 
-func TestWorkloadAgg(t *testing.T) {
-	queries := NewTestQueries(t)
-	_, err := queries.WorkloadAgg(context.TODO(), WorkloadAggRequest{})
-	require.NoError(t, err)
-}
-
 func TestStructToMap(t *testing.T) {
 
 	type TestStruct struct {

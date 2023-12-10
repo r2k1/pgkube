@@ -1,0 +1,28 @@
+<table class="table table-striped table-sm mt-3 fs-6" style="line-height: 1">
+    <thead>
+    <tr>
+        {{ range .AggData.Columns }}
+        {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
+        <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" style="cursor: pointer"
+        {{ end }}>
+        {{ . }}
+        {{ if $.Request.IsOrderAsc . }}
+        <span>&#x25B2;</span>
+        {{ end }}
+        {{ if $.Request.IsOrderDesc . }}
+        <span>&#x25BC;</span>
+        {{ end }}
+        </th>
+        {{ end }}
+    </tr>
+    </thead>
+    <tbody>
+    {{range .AggData.Rows}}
+    <tr class="border">
+        {{ range .}}
+        <td>{{.}}</td>
+        {{ end }}
+    </tr>
+    {{end}}
+    </tbody>
+</table>

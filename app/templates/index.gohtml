@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>pgkube</title>
+    <link rel="stylesheet" href="/assets/style.css">
+    <link href="/assets/bootstrap.min.css" rel="stylesheet">
+    <script src="/assets/htmx.js"></script>
+    <script src="/assets/bootstrap.min.js"></script>
+</head>
+<body>
+<div
+        class="container-fluid"
+        hx-target="this"
+        hx-get="/workload"
+        hx-select="#content"
+        hx-trigger="none"
+        hx-params="none"
+        hx-indicator="#indicator"
+        hx-sync="this:replace"
+        hx-swap="outerHTML"
+        hx-disabled-elt=".disable-during-update"
+        id="content"
+>
+    <div id="alert-placeholder"></div>
+    <div id="indicator" class="htmx-indicator spinner-border position-fixed right-0" role="status" style="right: 0">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <div class="row">
+        <div class="col pt-4" style="max-width: 21em">
+            <div class="input-group my-2">
+                <span class="input-group-text" style="min-width: 4em">From</span>
+                <input
+                        id="start-local"
+                        name="start"
+                        type="datetime-local"
+                        class="disable-during-update local-iso form-control"
+                        iso-date="{{.Request.StartValue}}"
+                />
+            </div>
+            <div class="input-group my-2">
+                <span class="input-group-text" style="min-width: 4em">Until</span>
+                <input
+                        id="end-local"
+                        name="end"
+                        type="datetime-local"
+                        class="disable-during-update local-iso form-control"
+                        iso-date="{{.Request.EndValue}}"
+                />
+            </div>
+            <div class="btn-group my-2 d-flex">
+                <a id="range-prev"
+                   class="btn btn-outline-primary disable-during-update"
+                   hx-get="{{.Request.LinkPrev}}"
+                >Prev {{.Request.Duration }}</a>
+                <a id="range-next"
+                   class="btn btn-outline-primary disable-during-update"
+                   hx-get="{{.Request.LinkNext}}"
+                >Next {{.Request.Duration }}</a>
+            </div>
+            <div class="btn-group my-2 d-flex">
+                {{ range .TimeRangeOptions }}
+                    <input
+                            type="radio"
+                            class="btn-check form-check-input disable-during-update"
+                            id="range-{{ .Value }}"
+                            {{ if eq .Value $.Request.Range }}checked{{ end }}
+                            name="range"
+                            hx-get="{{ $.Request.LinkRange .Value }}"
+                    >
+                    <label
+                            class="btn btn-outline-primary" for="range-{{ .Value }}"
+                            class="form-label"
+                    >{{.Label}}</label>
+                {{ end }}
+            </div>
+            <div class="">
+                <form id="add-label"
+                      onsubmit="event.preventDefault(); addLabel()"
+                      class="my-2"
+                >
+                    <div class="input-group d-flex">
+                        <input type="text" name="add-label" class="form-control" id="add-label-name"/>
+                        <button id="add-label-btn" class="btn btn-outline-primary disable-during-update">Add label</button>
+                    </div>
+                </form>
+                {{ range .Cols }}
+                    <div class="form-check">
+                        <input
+                                class="form-check-input disable-during-update"
+                                type="checkbox"
+                                name="col"
+                                value="{{ . }}"
+                                id="col-{{ . }}"
+                                {{ if $.Request.IsColSelected . }}checked{{ end }}
+                                hx-get="{{ $.Request.LinkToggleCol . }}"
+                        />
+                        <label
+                                class="form-check-label"
+                                for="col-{{ . }}"
+                        >{{ . }}</label>
+                    </div>
+                {{ end }}
+                {{ range .Request.Labels }}
+                    <div class="form-check">
+                        <input
+                                class="form-check-input disable-during-update"
+                                type="checkbox"
+                                name="col"
+                                value="{{ . }}"
+                                id="col-{{ . }}"
+                                checked
+                                hx-get="{{ $.Request.LinkToggleCol . }}"
+                        />
+                        <label
+                                class="form-check-label"
+                                for="col-label-{{ . }}"
+                        >{{ . }}</label>
+                    </div>
+                {{ end}}
+            </div>
+
+        </div>
+        <div class="col">
+            <div id="data">
+                {{ template "data.gohtml" . }}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function refreshContent(url) {
+        htmx.ajax("GET", url, {target: "#content", select: "#content"})
+    }
+
+
+    function addLabel() {
+        console.log("add label")
+        let label = document.getElementById('add-label-name').value;
+        if (!label) {
+            return
+        }
+        let url = new URL(window.location.href);
+        url.searchParams.append("col", "label_" + label)
+        refreshContent(url.toString())
+    }
+
+    function iso8601ToDatetimeLocal(isoStr) {
+        const date = new Date(isoStr);
+        return dateToDatetimeLocal(date)
+    }
+
+    function dateToDatetimeLocal(date) {
+        console.log(date)
+        const offset = date.getTimezoneOffset() * 60000; // Convert offset to milliseconds
+        const localISOTime = (new Date(date.getTime() - offset)).toISOString().slice(0, -1);
+        return localISOTime.substring(0, localISOTime.lastIndexOf(':'));
+    }
+
+    function datetimeLocalToIso8601(datetimeLocalStr) {
+        return new Date(datetimeLocalStr).toISOString();
+    }
+
+    function updateStartEnd(event) {
+        let url = new URL(window.location.href);
+        const start = datetimeLocalToIso8601(document.getElementById('start-local').value);
+        const end = datetimeLocalToIso8601(document.getElementById('end-local').value);
+        url.searchParams.set('start', start);
+        url.searchParams.set('end', end);
+        url.searchParams.delete('range');
+        refreshContent(url.toString())
+    }
+
+    htmx.onLoad(function (document) {
+        document.querySelectorAll('.local-iso').forEach(function (input) {
+            input.value = iso8601ToDatetimeLocal(input.getAttribute('iso-date'));
+            input.addEventListener('change', updateStartEnd);
+        });
+    })
+</script>
+</body>
+</html>

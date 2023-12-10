@@ -48,9 +48,8 @@ func NewSrv(queries *queries.Queries, templatesPath string, assetsPath string, a
 func MustTemplates(templatesPath string) *template.Template {
 	funcMap := template.FuncMap{
 		"byteCountSI": byteCountSI,
-		"formatData":  formatData,
 	}
-	path := filepath.Join(templatesPath, "*.html")
+	path := filepath.Join(templatesPath, "*.gohtml")
 	return template.Must(template.New("").Funcs(sprig.FuncMap()).Funcs(funcMap).ParseGlob(path))
 }
 
