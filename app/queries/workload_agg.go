@@ -39,10 +39,10 @@ func Cols() []string {
 }
 
 type WorkloadAggRequest struct {
-	Cols   []string
-	OderBy string
-	Start  time.Time
-	End    time.Time
+	Cols    []string
+	OrderBy string
+	Start   time.Time
+	End     time.Time
 }
 
 func Contains(data []string, term string) bool {
@@ -62,9 +62,9 @@ func (w WorkloadAggRequest) Validate() error {
 		}
 	}
 
-	orderByCol := strings.TrimPrefix(strings.TrimSuffix(w.OderBy, " desc"), " asc")
+	orderByCol := strings.TrimPrefix(strings.TrimSuffix(w.OrderBy, " desc"), " asc")
 	if !Contains(Cols(), orderByCol) {
-		return fmt.Errorf("invalid order by: %s", w.OderBy)
+		return fmt.Errorf("invalid order by: %s", w.OrderBy)
 	}
 	return nil
 }
@@ -131,8 +131,8 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		From("cost_hourly").
 		Where(sq.GtOrEq{"timestamp": req.Start}).
 		Where(sq.Lt{"timestamp": req.End})
-	if req.OderBy != "" {
-		query = query.OrderBy(req.OderBy)
+	if req.OrderBy != "" {
+		query = query.OrderBy(req.OrderBy)
 	}
 	// nolint: wrapcheck
 	return query.ToSql()

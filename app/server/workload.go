@@ -66,10 +66,10 @@ func (r WorkloadRequest) ToQuery() (queries.WorkloadAggRequest, error) {
 		end = r.End
 	}
 	return queries.WorkloadAggRequest{
-		Cols:   r.Cols,
-		OderBy: r.OderBy,
-		Start:  start,
-		End:    end,
+		Cols:    r.Cols,
+		OrderBy: r.OderBy,
+		Start:   start,
+		End:     end,
 	}, nil
 }
 
@@ -305,18 +305,6 @@ func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
 	result.OderBy = v.Get("orderby")
 	result.Start = TruncateHour(result.Start)
 	result.End = TruncateHour(result.End)
-	return result
-}
-
-func uniq(data []string) []string {
-	var result []string
-	seen := make(map[string]bool)
-	for _, d := range data {
-		if !seen[d] {
-			result = append(result, d)
-			seen[d] = true
-		}
-	}
 	return result
 }
 
