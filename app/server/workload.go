@@ -43,7 +43,7 @@ type WorkloadRequest struct {
 
 func DefaultRequest() WorkloadRequest {
 	return WorkloadRequest{
-		Cols:   []string{"namespace", "controller_kind", "controller_name"},
+		Cols:   []string{"namespace", "controller_kind", "controller_name", "request_cpu_cores", "used_cpu_cores", "request_memory_bytes", "used_memory_bytes", "total_cost"},
 		OderBy: "namespace",
 		Range:  "168h",
 	}
@@ -241,6 +241,10 @@ func timeToString(t time.Time) string {
 }
 
 func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.Query()) == 0 {
+		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
+		return
+	}
 	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
 
 	aggRequest, err := workloadReq.ToQuery()
