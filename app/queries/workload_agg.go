@@ -20,6 +20,7 @@ type Workload struct {
 
 func Cols() []string {
 	return []string{
+		"cluster",
 		"namespace",
 		"controller_kind",
 		"controller_name",
@@ -79,23 +80,25 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		return "", nil, fmt.Errorf("start time is after end time")
 	}
 	selectMap := map[string]string{
+		"cluster":               "(select name from cluster where id = cluster_id)",
 		"namespace":             "namespace",
 		"controller_kind":       "controller_kind",
 		"controller_name":       "controller_name",
 		"name":                  "name",
 		"node_name":             "node_name",
-		"request_cpu_cores":     fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2) as request_cpu_cores", hours),
-		"used_cpu_cores":        fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2) as used_cpu_cores", hours),
-		"request_memory_bytes":  fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f) as request_memory_bytes", hours),
-		"used_memory_bytes":     fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f) as used_memory_bytes", hours),
-		"request_storage_bytes": fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f) as request_storage_bytes", hours),
-		"hours":                 "round(sum(hours), 2) as hours",
-		"cpu_cost":              "round(sum(cpu_cost)::numeric, 2) as cpu_cost",
-		"memory_cost":           "round(sum(memory_cost)::numeric, 2) as memory_cost",
-		"storage_cost":          "round(sum(storage_cost)::numeric, 2) as storage_cost",
-		"total_cost":            "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2) as total_cost",
+		"request_cpu_cores":     fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2)", hours),
+		"used_cpu_cores":        fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2)", hours),
+		"request_memory_bytes":  fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f)", hours),
+		"used_memory_bytes":     fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f)", hours),
+		"request_storage_bytes": fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f)", hours),
+		"hours":                 "round(sum(hours), 2)",
+		"cpu_cost":              "round(sum(cpu_cost)::numeric, 2)",
+		"memory_cost":           "round(sum(memory_cost)::numeric, 2)",
+		"storage_cost":          "round(sum(storage_cost)::numeric, 2)",
+		"total_cost":            "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2)",
 	}
 	groupByCols := map[string]struct{}{
+		"cluster":         {},
 		"namespace":       {},
 		"controller_kind": {},
 		"controller_name": {},
@@ -107,7 +110,7 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 	// keep column order consistent
 	for _, c := range Cols() {
 		if Contains(req.Cols, c) {
-			selectStmts = append(selectStmts, selectMap[c])
+			selectStmts = append(selectStmts, selectMap[c]+" as "+c)
 			if _, ok := groupByCols[c]; ok {
 				groupByStmts = append(groupByStmts, selectMap[c])
 			}
@@ -151,7 +154,7 @@ func (q *Queries) WorkloadAgg(ctx context.Context, req WorkloadAggRequest) (*Wor
 		return nil, fmt.Errorf("failed to build workload aggregation query: %w", err)
 	}
 	slog.Info("SQL", "sql", sql, "args", args)
-	rows, err := q.db.Query(ctx, sql, args...)
+	rows, err := q.query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

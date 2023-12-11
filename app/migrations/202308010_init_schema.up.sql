@@ -168,6 +168,7 @@ create view pod_usage_request_hourly as
 select
         timestamp,
             pod.uid,
+            pod.cluster_id,
             pod.namespace,
             pod.name,
             pod.node_name,
@@ -213,6 +214,7 @@ where (node.deleted_at is null or gs.timestamp < node.deleted_at);
 create view cost_node_idle_hourly as
 select node.timestamp                                                                          as timestamp,
        node.uid                                                                                as uid,
+       node.cluster_id                                                                         as cluster_id,
        '__idle__'                                                                              as namespace,
        '__idle__'                                                                              as name,
        node.name                                                                               as node_name,
@@ -245,6 +247,7 @@ from node_hourly node
 create view cost_node_system_hourly as
 select timestamp,
        uid                                                                                     as uid,
+       cluster_id                                                                              as cluster_id,
        '__system__'                                                                            as namespace,
        '__system__'                                                                            as name,
        name                                                                                    as node_name,
