@@ -2,8 +2,10 @@ package test
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -130,4 +132,37 @@ func Migrate(t *testing.T, databaseURL string, migrationsPath string) {
 		return
 	}
 	require.NoError(t, err)
+}
+
+func MustParsePGUUID(src string) pgtype.UUID {
+	uid, err := ParsePGUUID(src)
+	if err != nil {
+		panic(err)
+	}
+	return uid
+}
+
+func ParsePGUUID(src string) (pgtype.UUID, error) {
+	uid, err := ParseUUID(src)
+	return pgtype.UUID{Bytes: uid, Valid: err == nil}, err
+}
+
+func ParseUUID(src string) (dst [16]byte, err error) {
+	switch len(src) {
+	case 36:
+		src = src[0:8] + src[9:13] + src[14:18] + src[19:23] + src[24:]
+	case 32:
+		// dashes already stripped, assume valid
+	default:
+		// assume invalid.
+		return dst, fmt.Errorf("cannot parse UUID %v", src)
+	}
+
+	buf, err := hex.DecodeString(src)
+	if err != nil {
+		return dst, fmt.Errorf("cannot parse UUID %v: %w", src, err)
+	}
+
+	copy(dst[:], buf)
+	return dst, nil
 }

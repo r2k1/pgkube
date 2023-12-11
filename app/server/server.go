@@ -60,6 +60,7 @@ func (s *Srv) Handler() http.Handler {
 	mux.Handle("/assets/", http.StripPrefix("/assets", fs))
 	mux.Handle("/", http.RedirectHandler(DefaultRequest().Link(), http.StatusFound))
 	mux.HandleFunc("/workload", s.HandleWorkload)
+	mux.HandleFunc("/workload.csv", s.HandleWorkloadCSV)
 	return LoggingMiddleware(mux)
 }
 

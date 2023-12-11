@@ -121,9 +121,8 @@
 
         </div>
         <div class="col">
-            <div id="data">
-                {{ template "data.gohtml" . }}
-            </div>
+            {{ template "workload_table.gohtml" . }}
+            <a href="{{.Request.LinkCSV}}" class="btn btn-outline-primary">Download CSV</a>
         </div>
     </div>
 </div>
@@ -170,11 +169,27 @@
         refreshContent(url.toString())
     }
 
+    function appendAlert (message) {
+        const alertPlaceholder = document.getElementById('alert-placeholder')
+        const wrapper = document.createElement('div')
+        wrapper.innerHTML = [
+            `<div class="alert alert-danger alert-dismissible" role="alert">`,
+            `   <div>${message}</div>`,
+            '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+            '</div>'
+        ].join('')
+        alertPlaceholder.append(wrapper)
+    }
+
     htmx.onLoad(function (document) {
         document.querySelectorAll('.local-iso').forEach(function (input) {
             input.value = iso8601ToDatetimeLocal(input.getAttribute('iso-date'));
             input.addEventListener('change', updateStartEnd);
         });
+    })
+
+    document.body.addEventListener("htmx:responseError", function (event) {
+        appendAlert(event.detail.xhr.responseText)
     })
 </script>
 </body>

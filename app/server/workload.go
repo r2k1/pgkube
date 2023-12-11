@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -181,6 +182,13 @@ func (r WorkloadRequest) IsOrderDesc(col string) bool {
 }
 
 func (r WorkloadRequest) Link() string {
+	values := r.urlValues()
+	u, _ := url.Parse("/workload")
+	u.RawQuery = values.Encode()
+	return u.String()
+}
+
+func (r WorkloadRequest) urlValues() url.Values {
 	values := url.Values{
 		"col": r.Cols,
 	}
@@ -195,10 +203,15 @@ func (r WorkloadRequest) Link() string {
 			values.Set("end", r.EndValue())
 		}
 	}
-	if r.OderBy != "" {
+	if r.OderBy != "" && lo.Contains(r.Cols, r.OderBy) {
 		values.Set("orderby", r.OderBy)
 	}
-	u, _ := url.Parse("/workload")
+	return values
+}
+
+func (r WorkloadRequest) LinkCSV() string {
+	values := r.urlValues()
+	u, _ := url.Parse("/workload.csv")
 	u.RawQuery = values.Encode()
 	return u.String()
 }
@@ -245,15 +258,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
 		return
 	}
-	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
-
-	aggRequest, err := workloadReq.ToQuery()
-	if err != nil {
-		HTTPError(w, err)
-		return
-	}
-
-	aggData, err := s.queries.WorkloadAgg(r.Context(), aggRequest)
+	workloadReq, aggData, err := s.fetchWorkloadData(r)
 	if err != nil {
 		HTTPError(w, err)
 		return
@@ -280,7 +285,59 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	s.renderFunc(w, "index.gohtml", data)
+	s.renderFunc(w, "workload.gohtml", data)
+}
+
+func (s *Srv) HandleWorkloadCSV(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.Query()) == 0 {
+		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
+		return
+	}
+
+	_, aggData, err := s.fetchWorkloadData(r)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=pgkube.csv")
+	err = writeAsCSV(w, aggData)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
+}
+
+func (s *Srv) fetchWorkloadData(r *http.Request) (WorkloadRequest, *queries.WorkloadAggResult, error) {
+	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
+
+	aggRequest, err := workloadReq.ToQuery()
+	if err != nil {
+		return workloadReq, nil, err
+	}
+	aggData, err := s.queries.WorkloadAgg(r.Context(), aggRequest)
+
+	if err != nil {
+		return workloadReq, nil, err
+	}
+	return workloadReq, aggData, nil
+
+}
+
+func writeAsCSV(w http.ResponseWriter, aggData *queries.WorkloadAggResult) error {
+	csvWriter := csv.NewWriter(w)
+
+	if err := csvWriter.Write(aggData.Columns); err != nil {
+		return fmt.Errorf("failed to write csv header: %w", err)
+	}
+	for _, row := range aggData.Rows {
+		if err := csvWriter.Write(row); err != nil {
+			return fmt.Errorf("failed to write csv row: %w", err)
+		}
+	}
+	csvWriter.Flush()
+	return nil
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
