@@ -40,7 +40,7 @@ func TestWorkloadAgg(t *testing.T) {
 		{
 			name: "WithLabelColumns",
 			req: WorkloadAggRequest{
-				Cols:    []string{"namespace", "name", "label_app"},
+				Cols:    []string{"namespace", "name", "label_app", "cluster"},
 				Start:   time.Now().Add(-24 * time.Hour),
 				End:     time.Now(),
 				OrderBy: "label_app",

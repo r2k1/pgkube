@@ -35,6 +35,7 @@ type Config struct {
 	KubeConfig  string `env:"KUBECONFIG,required,expand" envDefault:"${HOME}/.kube/config"`
 	LogLevel    string `env:"LOG_LEVEL" envDefault:"INFO"`
 	Addr        string `env:"ADDR" envDefault:":8080"`
+	ClusterName string `env:"CLUSTER_NAME" envDefault:"default"`
 
 	// Dev configuration, shouldn't be used in production
 	DisableScrapingDelay bool `env:"DISABLE_SCRAPING_DELAY" envDefault:"false"`
@@ -90,7 +91,10 @@ func Execute(ctx context.Context) error {
 		return fmt.Errorf("unable to connect to database: %w", err)
 	}
 	defer pool.Close()
-	queries := queries.New(pool)
+	queries, err := queries.New(ctx, pool, cfg.ClusterName)
+	if err != nil {
+		return err
+	}
 
 	clientset, err := K8sClientset(cfg)
 	if err != nil {

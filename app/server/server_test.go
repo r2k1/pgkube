@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,9 +12,15 @@ import (
 	"github.com/r2k1/pgkube/app/test"
 )
 
-func TestServer_HandleWorkload(t *testing.T) {
+func NewTestQueries(t *testing.T) *queries.Queries {
 	db := test.CreateTestDB(t, "../migrations")
-	handler := NewSrv(queries.New(db), "../templates", "../assets", false).Handler()
+	q, err := queries.New(context.TODO(), db, "test-cluster")
+	require.NoError(t, err)
+	return q
+}
+
+func TestServer_HandleWorkload(t *testing.T) {
+	handler := NewSrv(NewTestQueries(t), "../templates", "../assets", false).Handler()
 	tests := []struct {
 		path       string
 		statusCode int

@@ -1,5 +1,13 @@
+create table cluster
+(
+    id         smallserial primary key,
+    name       text                     not null unique,
+    created_at timestamp with time zone not null default now()
+);
+
 create table object
 (
+    cluster_id smallint                 not null,
     uid        uuid primary key,
     kind       text  not null,
     namespace  text  not null,
@@ -10,6 +18,7 @@ create table object
 
 create table pod_usage_hourly
 (
+    cluster_id                  smallint                 not null,
     pod_uid                     uuid                     not null,
     timestamp                   timestamp with time zone not null,
     memory_bytes_max            double precision         not null default 0,
@@ -45,7 +54,9 @@ create table config
 );
 
 insert into config (default_price_cpu_core_hour, default_price_memory_byte_hour, default_price_storage_byte_hour)
-values (0.031611, 0.004237 / 1000000000, 0.00005479452 / 1000000000);
+values (0.03398, 0.00456 / (2^30), 0.17 / 30 / 24 / (2^30));
+-- core/memory pricing are for google compute on-demand C3  https://cloud.google.com/compute/vm-instance-pricing#general-purpose_machine_type_family
+-- storage price is SSD provisioned space https://cloud.google.com/compute/disks-image-pricing#disk
 
 
 create view object_controller as
@@ -157,6 +168,7 @@ create view pod_usage_request_hourly as
 select
         timestamp,
             pod.uid,
+            pod.cluster_id,
             pod.namespace,
             pod.name,
             pod.node_name,
@@ -202,6 +214,7 @@ where (node.deleted_at is null or gs.timestamp < node.deleted_at);
 create view cost_node_idle_hourly as
 select node.timestamp                                                                          as timestamp,
        node.uid                                                                                as uid,
+       node.cluster_id                                                                         as cluster_id,
        '__idle__'                                                                              as namespace,
        '__idle__'                                                                              as name,
        node.name                                                                               as node_name,
@@ -234,6 +247,7 @@ from node_hourly node
 create view cost_node_system_hourly as
 select timestamp,
        uid                                                                                     as uid,
+       cluster_id                                                                              as cluster_id,
        '__system__'                                                                            as namespace,
        '__system__'                                                                            as name,
        name                                                                                    as node_name,
