@@ -185,7 +185,7 @@ select
             extract (epoch from (least(pod_usage_hourly.timestamp + interval '1 hour', pod.deleted_at, now()) - greatest(pod_usage_hourly.timestamp, pod.start_time)) / 3600) as hours
         from pod_usage_hourly
         inner join pod on (pod_usage_hourly.pod_uid = pod.uid)
-        inner join object_controller
+        left join object_controller
         on (pod_uid = object_controller.uid::uuid);
 
 create view node as

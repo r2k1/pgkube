@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -245,15 +246,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
 		return
 	}
-	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
-
-	aggRequest, err := workloadReq.ToQuery()
-	if err != nil {
-		HTTPError(w, err)
-		return
-	}
-
-	aggData, err := s.queries.WorkloadAgg(r.Context(), aggRequest)
+	workloadReq, aggData, err := s.fetchWorkloadData(r)
 	if err != nil {
 		HTTPError(w, err)
 		return
@@ -281,6 +274,58 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderFunc(w, "index.gohtml", data)
+}
+
+func (s *Srv) HandleWorkloadCSV(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.Query()) == 0 {
+		http.Redirect(w, r, DefaultRequest().Link(), http.StatusFound)
+		return
+	}
+
+	_, aggData, err := s.fetchWorkloadData(r)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=pgkube.csv")
+	err = writeAsCSV(w, aggData)
+	if err != nil {
+		HTTPError(w, err)
+		return
+	}
+}
+
+func (s *Srv) fetchWorkloadData(r *http.Request) (WorkloadRequest, *queries.WorkloadAggResult, error) {
+	workloadReq := UnmarshalWorkloadRequest(r.URL.Query())
+
+	aggRequest, err := workloadReq.ToQuery()
+	if err != nil {
+		return workloadReq, nil, err
+	}
+	aggData, err := s.queries.WorkloadAgg(r.Context(), aggRequest)
+
+	if err != nil {
+		return workloadReq, nil, err
+	}
+	return workloadReq, aggData, nil
+
+}
+
+func writeAsCSV(w http.ResponseWriter, aggData *queries.WorkloadAggResult) error {
+	csvWriter := csv.NewWriter(w)
+
+	if err := csvWriter.Write(aggData.Columns); err != nil {
+		return err
+	}
+	for _, row := range aggData.Rows {
+		if err := csvWriter.Write(row); err != nil {
+			return err
+		}
+	}
+	csvWriter.Flush()
+	return nil
 }
 
 func UnmarshalWorkloadRequest(v url.Values) WorkloadRequest {
