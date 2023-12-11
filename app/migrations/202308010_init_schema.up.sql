@@ -45,7 +45,9 @@ create table config
 );
 
 insert into config (default_price_cpu_core_hour, default_price_memory_byte_hour, default_price_storage_byte_hour)
-values (0.031611, 0.004237 / 1000000000, 0.00005479452 / 1000000000);
+values (0.03398, 0.00456 / (2^30), 0.17 / 30 / 24 / (2^30));
+-- core/memory pricing are for google compute on-demand C3  https://cloud.google.com/compute/vm-instance-pricing#general-purpose_machine_type_family
+-- storage price is SSD provisioned space https://cloud.google.com/compute/disks-image-pricing#disk
 
 
 create view object_controller as
