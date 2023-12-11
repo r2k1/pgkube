@@ -203,7 +203,7 @@ func (r WorkloadRequest) urlValues() url.Values {
 			values.Set("end", r.EndValue())
 		}
 	}
-	if r.OderBy != "" {
+	if r.OderBy != "" && lo.Contains(r.Cols, r.OderBy) {
 		values.Set("orderby", r.OderBy)
 	}
 	return values
