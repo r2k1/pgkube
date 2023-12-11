@@ -285,7 +285,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	s.renderFunc(w, "index.gohtml", data)
+	s.renderFunc(w, "workload.gohtml", data)
 }
 
 func (s *Srv) HandleWorkloadCSV(w http.ResponseWriter, r *http.Request) {
