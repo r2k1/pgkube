@@ -329,11 +329,11 @@ func writeAsCSV(w http.ResponseWriter, aggData *queries.WorkloadAggResult) error
 	csvWriter := csv.NewWriter(w)
 
 	if err := csvWriter.Write(aggData.Columns); err != nil {
-		return err
+		return fmt.Errorf("failed to write csv header: %w", err)
 	}
 	for _, row := range aggData.Rows {
 		if err := csvWriter.Write(row); err != nil {
-			return err
+			return fmt.Errorf("failed to write csv row: %w", err)
 		}
 	}
 	csvWriter.Flush()
