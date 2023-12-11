@@ -20,8 +20,6 @@ type Workload struct {
 
 func Cols() []string {
 	return []string{
-		"timestamp",
-		"date",
 		"cluster",
 		"namespace",
 		"controller_kind",
@@ -82,8 +80,6 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		return "", nil, fmt.Errorf("start time is after end time")
 	}
 	selectMap := map[string]string{
-		"timestamp":             "timestamp at time zone 'utc'",
-		"date":                  "timestamp::date::text",
 		"cluster":               "(select name from cluster where id = cluster_id)",
 		"namespace":             "namespace",
 		"controller_kind":       "controller_kind",
@@ -102,8 +98,6 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		"total_cost":            "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2)",
 	}
 	groupByCols := map[string]struct{}{
-		"timestamp":       {},
-		"date":            {},
 		"cluster":         {},
 		"namespace":       {},
 		"controller_kind": {},
