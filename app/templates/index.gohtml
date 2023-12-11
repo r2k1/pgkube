@@ -121,9 +121,8 @@
 
         </div>
         <div class="col">
-            <div id="data">
-                {{ template "data.gohtml" . }}
-            </div>
+            {{ template "data.gohtml" . }}
+            <a href="{{.Request.LinkCSV}}" class="btn btn-outline-primary">Download CSV</a>
         </div>
     </div>
 </div>

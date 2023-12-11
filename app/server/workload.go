@@ -182,6 +182,13 @@ func (r WorkloadRequest) IsOrderDesc(col string) bool {
 }
 
 func (r WorkloadRequest) Link() string {
+	values := r.urlValues()
+	u, _ := url.Parse("/workload")
+	u.RawQuery = values.Encode()
+	return u.String()
+}
+
+func (r WorkloadRequest) urlValues() url.Values {
 	values := url.Values{
 		"col": r.Cols,
 	}
@@ -199,7 +206,12 @@ func (r WorkloadRequest) Link() string {
 	if r.OderBy != "" {
 		values.Set("orderby", r.OderBy)
 	}
-	u, _ := url.Parse("/workload")
+	return values
+}
+
+func (r WorkloadRequest) LinkCSV() string {
+	values := r.urlValues()
+	u, _ := url.Parse("/workload.csv")
 	u.RawQuery = values.Encode()
 	return u.String()
 }
