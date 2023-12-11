@@ -20,12 +20,19 @@ type DBTX interface {
 	SendBatch(context.Context, *pgx.Batch) pgx.BatchResults
 }
 
-func New(db DBTX) *Queries {
-	return &Queries{db: db}
+func New(ctx context.Context, db DBTX, clusterName string) (*Queries, error) {
+	q := &Queries{db: db}
+	var err error
+	q.clusterID, err = q.GetOrCreateCluster(ctx, clusterName)
+	if err != nil {
+		return nil, err
+	}
+	return q, nil
 }
 
 type Queries struct {
-	db DBTX
+	db        DBTX
+	clusterID int
 }
 
 func (q *Queries) WithTx(tx pgx.Tx) *Queries {

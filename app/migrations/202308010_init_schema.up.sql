@@ -1,5 +1,13 @@
+create table cluster
+(
+    id         smallserial primary key,
+    name       text                     not null unique,
+    created_at timestamp with time zone not null default now()
+);
+
 create table object
 (
+    cluster_id smallint                 not null,
     uid        uuid primary key,
     kind       text  not null,
     namespace  text  not null,
@@ -10,6 +18,7 @@ create table object
 
 create table pod_usage_hourly
 (
+    cluster_id                  smallint                 not null,
     pod_uid                     uuid                     not null,
     timestamp                   timestamp with time zone not null,
     memory_bytes_max            double precision         not null default 0,

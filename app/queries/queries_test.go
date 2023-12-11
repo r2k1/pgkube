@@ -168,7 +168,9 @@ func TestDeleteObjects(t *testing.T) {
 
 func NewTestQueries(t *testing.T) *Queries {
 	db := test.CreateTestDB(t, "../migrations")
-	return New(db)
+	q, err := New(context.TODO(), db, "test-cluster")
+	require.NoError(t, err)
+	return q
 }
 
 func NewUUID() pgtype.UUID {

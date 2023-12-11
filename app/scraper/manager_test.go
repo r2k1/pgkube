@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -92,7 +93,9 @@ func CreateDB(t *testing.T) *pgx.Conn {
 }
 
 func Queries(t *testing.T) *queries.Queries {
-	return queries.New(CreateDB(t))
+	q, err := queries.New(context.TODO(), CreateDB(t), "test-cluster")
+	require.NoError(t, err)
+	return q
 }
 
 func Context(t *testing.T) context.Context {
