@@ -20,17 +20,19 @@ type Workload struct {
 
 func Cols() []string {
 	return []string{
+		"timestamp",
+		"date",
 		"cluster",
 		"namespace",
 		"controller_kind",
 		"controller_name",
 		"name",
 		"node_name",
-		"request_cpu_cores",
-		"used_cpu_cores",
-		"request_memory_bytes",
-		"used_memory_bytes",
-		"request_storage_bytes",
+		"request_cpu_core_hours",
+		"used_cpu_core_hours",
+		"request_memory_gb_hours",
+		"used_memory_gb_hours",
+		"request_storage_gb_hours",
 		"hours",
 		"cpu_cost",
 		"memory_cost",
@@ -75,29 +77,35 @@ var labelRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$`)
 func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 	psq := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-	hours := req.End.Sub(req.Start).Hours()
-	if hours < 0 {
+	if req.Start.After(req.End) {
 		return "", nil, fmt.Errorf("start time is after end time")
 	}
+
+	selectStmts := make([]string, 0)
+	groupByStmts := make([]string, 0)
 	selectMap := map[string]string{
-		"cluster":               "(select name from cluster where id = cluster_id)",
-		"namespace":             "namespace",
-		"controller_kind":       "controller_kind",
-		"controller_name":       "controller_name",
-		"name":                  "name",
-		"node_name":             "node_name",
-		"request_cpu_cores":     fmt.Sprintf("round((sum(request_cpu_cores * hours) / %f)::numeric, 2)", hours),
-		"used_cpu_cores":        fmt.Sprintf("round((sum(cpu_cores_avg * hours) / %f)::numeric, 2)", hours),
-		"request_memory_bytes":  fmt.Sprintf("round(sum(request_memory_bytes * hours) / %f)", hours),
-		"used_memory_bytes":     fmt.Sprintf("round(sum(memory_bytes_avg * hours) / %f)", hours),
-		"request_storage_bytes": fmt.Sprintf("round(sum(request_storage_bytes * hours) / %f)", hours),
-		"hours":                 "round(sum(hours), 2)",
-		"cpu_cost":              "round(sum(cpu_cost)::numeric, 2)",
-		"memory_cost":           "round(sum(memory_cost)::numeric, 2)",
-		"storage_cost":          "round(sum(storage_cost)::numeric, 2)",
-		"total_cost":            "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2)",
+		"timestamp":                "timestamp",
+		"date":                     "timestamp::date::text",
+		"cluster":                  "(select name from cluster where id = cluster_id)",
+		"namespace":                "namespace",
+		"controller_kind":          "controller_kind",
+		"controller_name":          "controller_name",
+		"name":                     "name",
+		"node_name":                "node_name",
+		"request_cpu_core_hours":   "round((sum(request_cpu_cores * hours))::numeric, 2)",
+		"used_cpu_core_hours":      "round((sum(cpu_cores_avg * hours))::numeric, 2)",
+		"request_memory_gb_hours":  "round(sum(request_memory_bytes * hours)) / 1024 / 1024 / 1024",
+		"used_memory_gb_hours":     "round(sum(memory_bytes_avg * hours)) / 1024 / 1024 / 1024",
+		"request_storage_gb_hours": "round(sum(request_storage_bytes * hours)) / 1024 / 1024 / 1024",
+		"hours":                    "round(sum(hours), 2)",
+		"cpu_cost":                 "round(sum(cpu_cost)::numeric, 2)",
+		"memory_cost":              "round(sum(memory_cost)::numeric, 2)",
+		"storage_cost":             "round(sum(storage_cost)::numeric, 2)",
+		"total_cost":               "round(sum(memory_cost + cpu_cost + storage_cost)::numeric, 2)",
 	}
 	groupByCols := map[string]struct{}{
+		"timestamp":       {},
+		"date":            {},
 		"cluster":         {},
 		"namespace":       {},
 		"controller_kind": {},
@@ -105,8 +113,6 @@ func workloadQuery(req WorkloadAggRequest) (string, []interface{}, error) {
 		"name":            {},
 		"node_name":       {},
 	}
-	selectStmts := make([]string, 0)
-	groupByStmts := make([]string, 0)
 	// keep column order consistent
 	for _, c := range Cols() {
 		if Contains(req.Cols, c) {
