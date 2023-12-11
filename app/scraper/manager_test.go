@@ -92,6 +92,7 @@ func CreateDB(t *testing.T) *pgx.Conn {
 	return test.CreateTestDB(t, "../migrations")
 }
 
+// nolint:contextcheck
 func Queries(t *testing.T) *queries.Queries {
 	q, err := queries.New(context.TODO(), CreateDB(t), "test-cluster")
 	require.NoError(t, err)
