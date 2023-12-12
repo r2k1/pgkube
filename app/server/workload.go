@@ -203,7 +203,8 @@ func (r WorkloadRequest) urlValues() url.Values {
 			values.Set("end", r.EndValue())
 		}
 	}
-	if r.OderBy != "" && lo.Contains(r.Cols, r.OderBy) {
+	orderByCol := strings.TrimSuffix(strings.TrimSuffix(r.OderBy, " desc"), " asc")
+	if r.OderBy != "" && lo.Contains(r.Cols, orderByCol) {
 		values.Set("orderby", r.OderBy)
 	}
 	return values
