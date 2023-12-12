@@ -5,13 +5,7 @@
         {{$toggleOrderLink := $.Request.LinkToggleOrder .}}
         <th {{ if ne $toggleOrderLink "" }}hx-get="{{ $toggleOrderLink }}" style="cursor: pointer"
         {{ end }}>
-        {{ . }}
-        {{ if $.Request.IsOrderAsc . }}
-        <span>&#x25B2;</span>
-        {{ end }}
-        {{ if $.Request.IsOrderDesc . }}
-        <span>&#x25BC;</span>
-        {{ end }}
+        {{ . }}{{ if $.Request.IsOrderAsc . }}<span>&#x25B2;</span>{{ end }}{{ if $.Request.IsOrderDesc . }}<span>&#x25BC;</span>{{ end }}
         </th>
         {{ end }}
     </tr>
