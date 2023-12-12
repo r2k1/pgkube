@@ -26,9 +26,9 @@
     <div id="indicator" class="htmx-indicator spinner-border position-fixed right-0" role="status" style="right: 0">
         <span class="visually-hidden">Loading...</span>
     </div>
-    <div class="row">
-        <div class="col pt-4" style="max-width: 21em">
-            <div class="input-group my-2">
+    <div class="d-flex">
+        <div class="mt-4 me-2" style="flex-basis: 14em; flex-shrink: 0">
+            <div class="input-group input-group-sm my-2">
                 <span class="input-group-text" style="min-width: 4em">From</span>
                 <input
                         id="start-local"
@@ -38,7 +38,7 @@
                         iso-date="{{.Request.StartValue}}"
                 />
             </div>
-            <div class="input-group my-2">
+            <div class="input-group input-group-sm my-2">
                 <span class="input-group-text" style="min-width: 4em">Until</span>
                 <input
                         id="end-local"
@@ -48,7 +48,7 @@
                         iso-date="{{.Request.EndValue}}"
                 />
             </div>
-            <div class="btn-group my-2 d-flex">
+            <div class="btn-group btn-group-sm my-2 d-flex">
                 <a id="range-prev"
                    class="btn btn-outline-primary disable-during-update"
                    hx-get="{{.Request.LinkPrev}}"
@@ -58,7 +58,7 @@
                    hx-get="{{.Request.LinkNext}}"
                 >Next {{.Request.Duration }}</a>
             </div>
-            <div class="btn-group my-2 d-flex">
+            <div class="btn-group btn-group-sm my-2 d-flex">
                 {{ range .TimeRangeOptions }}
                     <input
                             type="radio"
@@ -79,7 +79,7 @@
                       onsubmit="event.preventDefault(); addLabel()"
                       class="my-2"
                 >
-                    <div class="input-group d-flex">
+                    <div class="input-group input-group-sm d-flex">
                         <input type="text" name="add-label" class="form-control" id="add-label-name"/>
                         <button id="add-label-btn" class="btn btn-outline-primary disable-during-update">Add label</button>
                     </div>
@@ -121,7 +121,7 @@
             </div>
 
         </div>
-        <div class="col">
+        <div>
             {{ template "workload_table.gohtml" . }}
             <a href="{{.Request.LinkCSV}}" class="btn btn-outline-primary">Download CSV</a>
             <a class="btn btn-outline-primary" onclick="toggleSQLQuery()" id="toggle-sql-query-btn">Show SQL Query</a>

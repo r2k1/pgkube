@@ -277,7 +277,7 @@ func (s *Srv) HandleWorkload(w http.ResponseWriter, r *http.Request) {
 		AggData: aggData,
 		Cols:    queries.Cols(),
 		TimeRangeOptions: []TimeRangeOptions{
-			{Label: "Last 1h", Value: "1h"},
+			{Label: "1h", Value: "1h"},
 			{Label: "3h", Value: "3h"},
 			{Label: "12h", Value: "12h"},
 			{Label: "1d", Value: "24h"},
