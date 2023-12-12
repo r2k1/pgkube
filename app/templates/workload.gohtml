@@ -123,12 +123,63 @@
         <div class="col">
             {{ template "workload_table.gohtml" . }}
             <a href="{{.Request.LinkCSV}}" class="btn btn-outline-primary">Download CSV</a>
+            <a class="btn btn-outline-primary" onclick="toggleSQLQuery()" id="toggle-sql-query-btn">Show SQL Query</a>
+            <a class="btn btn-outline-primary" onclick="copySQLToClipboard()" id="copy-sql">Copy SQL Query</a>
+            <div class="my-4 visually-hidden" id="sql-query-section">
+                <label class="form-label" for="sql-query">SQL Query</label>
+                <textarea rows="5"  class="form-control" id="sql-query">
+                    {{ .AggData.SQLQuery }}
+                </textarea>
+                {{ $index := 0}}
+                {{ range .AggData.SQLQueryArgs }}
+                    {{ $index = add $index 1 }}
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text">${{ $index }}</span>
+                        </div>
+                        <input type="text" value="{{ . }}" class="form-control"/>
+                    </div>
+                {{ end }}
+            </div>
         </div>
     </div>
 </div>
 <script>
     function refreshContent(url) {
         htmx.ajax("GET", url, {target: "#content", select: "#content"})
+    }
+
+    function copySQLToClipboard() {
+        // Get the textarea element
+        var textarea = document.getElementById("sql-query");
+
+        // Select the text
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // For mobile devices
+
+        // Copy the text inside the textarea
+        navigator.clipboard.writeText(textarea.value)
+            .then(() => {
+                document.getElementById('copy-sql').innerText = 'Copied!'
+                setTimeout(function () {
+                    document.getElementById('copy-sql').innerText = 'Copy SQL Query'
+                }, 1000)
+            })
+            .catch(err => {
+                document.getElementById('copy-sql').innerText = 'Failed to copy: ' + err
+            });
+    }
+
+    function toggleSQLQuery() {
+        const sqlQuerySection = document.getElementById('sql-query-section')
+        sqlQuerySection.classList.toggle('visually-hidden')
+        // switch button text
+        const toggleSQLQueryBtn = document.getElementById('toggle-sql-query-btn')
+        if (sqlQuerySection.classList.contains('visually-hidden')) {
+            toggleSQLQueryBtn.innerText = 'Show SQL Query'
+        } else {
+            toggleSQLQueryBtn.innerText = 'Hide SQL Query'
+        }
     }
 
 
@@ -169,7 +220,7 @@
         refreshContent(url.toString())
     }
 
-    function appendAlert (message) {
+    function appendAlert(message) {
         const alertPlaceholder = document.getElementById('alert-placeholder')
         const wrapper = document.createElement('div')
         wrapper.innerHTML = [
