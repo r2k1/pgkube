@@ -2,13 +2,68 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: pgkube
+  name: pgkube-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: pgkube-demo
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: pgkube-demo
+spec:
+  serviceName: "postgres-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          env:
+            - name: POSTGRES_USER
+              value: "pgkube-user"
+            - name: POSTGRES_PASSWORD
+              value: "pgkube-password"
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-pv
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "300Mi"
+              cpu: "0.1"
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-pv
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 4Gi
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: pgkube
-  namespace: pgkube
+  namespace: pgkube-demo
 stringData:
   DATABASE_URL: "postgres://pgkube-user:pgkube-password@postgres-service:5432/postgres"
 ---
@@ -16,6 +71,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: pgkube
+  namespace: pgkube-demo
 rules:
   - apiGroups:
       - ""
@@ -42,7 +98,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: pgkube
-  namespace: pgkube
+  namespace: pgkube-demo
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -55,13 +111,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: pgkube
-    namespace: pgkube
+    namespace: pgkube-demo
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pgkube
-  namespace: pgkube
+  namespace: pgkube-demo
   labels:
     app: pgkube
 spec:
@@ -77,7 +133,7 @@ spec:
       serviceAccountName: pgkube
       containers:
         - name: pgkube
-          image: ghcr.io/r2k1/pgkube:0.1.0
+          image: ghcr.io/r2k1/pgkube:latest
           ports:
             - containerPort: 8080
           envFrom:
@@ -92,8 +148,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: pgkube
-  namespace: pgkube
+  namespace: pgkube-demo
 spec:
+  type: LoadBalancer
   selector:
     app: pgkube
   ports:
