@@ -46,7 +46,7 @@ jobs:
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
           docker buildx build \
-            --platform=linux/amd64 \
+            --platform linux/amd64,linux/arm/v7,linux/arm64 \
             --push \
             -t ghcr.io/r2k1/pgkube:main \
             .
@@ -55,7 +55,7 @@ jobs:
         run: |
           tag="$(echo "${{ github.ref }}" | cut -d'/' -f3)"
           docker buildx build \
-            --platform=linux/amd64 \
+            --platform linux/amd64,linux/arm/v7,linux/arm64 \
             --push \
             -t ghcr.io/r2k1/pgkube:latest \
             -t ghcr.io/r2k1/pgkube:$tag \
